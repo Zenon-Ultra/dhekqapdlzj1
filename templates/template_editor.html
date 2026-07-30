@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>시험지 템플릿 편집기</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue: #1a6ef5; --blue-dark: #1458cc; --blue-light: #e8f0fe;
+      --bg: #c8cdd8; --white: #ffffff; --text: #1a1d2e; --sub: #6b7280;
+      --border: #d1d5db; --toolbar-bg: #2d3a5a; --toolbar-hover: #4a5f8a;
+      --radius: 8px;
+    }
+    body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; font-size: 13px; }
+
+    /* ── 메뉴바 ── */
+    .menubar { background: var(--toolbar-bg); height: 34px; display: flex; align-items: center; padding: 0 14px; gap: 2px; flex-shrink: 0; border-bottom: 1px solid #1a2540; }
+    .menubar-logo { color: #fff; font-size: 14px; font-weight: 900; margin-right: 20px; }
+    .menubar-logo span { color: #60a5fa; }
+    .menu-item { color: #c8d4f0; font-size: 12px; padding: 4px 12px; border-radius: 4px; cursor: pointer; transition: all .15s; }
+    .menu-item:hover { background: var(--toolbar-hover); color: #fff; }
+    .menu-sep { width: 1px; height: 16px; background: #3d4f78; margin: 0 4px; }
+    .mode-tab { background: transparent; color: #c8d4f0; border: 1px solid #3d4f78; padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all .15s; }
+    .mode-tab:hover { background: var(--toolbar-hover); color: #fff; }
+    .mode-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: bold; }
+
+    /* ── 리본 툴바 ── */
+    .ribbon { background: #f0f2f8; border-bottom: 1.5px solid var(--border); display: flex; align-items: stretch; flex-shrink: 0; overflow-x: auto; }
+    .ribbon-group { display: flex; flex-direction: column; align-items: center; padding: 6px 12px; border-right: 1px solid var(--border); gap: 4px; flex-shrink: 0; }
+    .ribbon-group-label { font-size: 9px; color: var(--sub); text-align: center; }
+    .ribbon-row { display: flex; gap: 4px; align-items: center; }
+    .rb { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; font-family: inherit; color: var(--text); display: flex; align-items: center; gap: 4px; transition: all .12s; white-space: nowrap; }
+    .rb:hover { background: #fff; border-color: var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .rb.active { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
+    .rb.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .rb.primary:hover { background: var(--blue-dark); }
+    .rb.danger:hover { background: #fee2e2; border-color: #fca5a5; color: #ef4444; }
+    .rs { border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font-family: inherit; font-size: 12px; color: var(--text); background: #fff; cursor: pointer; }
+    .rs:focus { outline: none; border-color: var(--blue); }
+    .rn { border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font-family: inherit; font-size: 12px; color: var(--text); background: #fff; width: 54px; }
+    .rn:focus { outline: none; border-color: var(--blue); }
+    .rc { height: 24px; width: 30px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; padding: 2px; }
+    .rtoggle { display: flex; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+    .rtoggle button { border: none; background: transparent; padding: 3px 8px; font-size: 11px; font-family: inherit; cursor: pointer; color: var(--sub); transition: all .12s; }
+    .rtoggle button.active { background: var(--blue); color: #fff; border-radius: 3px; }
+
+    /* ── 에디터 레이아웃 ── */
+    .editor-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── 왼쪽 패널 ── */
+    .left-panel { width: 218px; flex-shrink: 0; background: #fff; border-right: 1.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+    .ps { border-bottom: 1px solid var(--border); }
+    .ps-header { padding: 9px 14px 8px; font-size: 11px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+    .ps-header:hover { background: #f9fafb; }
+    .ps-body { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 7px; }
+    .ps.collapsed .ps-body { display: none; }
+    .ps.collapsed .ci { transform: rotate(-90deg); }
+    .ci { font-size: 9px; transition: transform .2s; }
+    .pr { display: flex; align-items: center; gap: 6px; }
+    .pl { font-size: 12px; color: var(--text); flex-shrink: 0; white-space: nowrap; min-width: 56px; }
+    .pi { border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-family: inherit; font-size: 12px; color: var(--text); background: #fff; flex: 1; min-width: 0; }
+    .pi:focus { outline: none; border-color: var(--blue); }
+    .pi.full { width: 100%; }
+    .psel { border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font-family: inherit; font-size: 12px; color: var(--text); background: #fff; flex: 1; }
+    .psel:focus { outline: none; border-color: var(--blue); }
+    .pc { height: 28px; border: 1px solid var(--border); border-radius: 5px; cursor: pointer; flex: 1; }
+    .ptog { display: flex; background: #f3f4f6; border-radius: 5px; overflow: hidden; flex: 1; }
+    .ptog button { flex: 1; border: none; background: transparent; padding: 4px 2px; font-size: 11px; font-family: inherit; cursor: pointer; color: var(--sub); transition: all .12s; }
+    .ptog button.active { background: var(--blue); color: #fff; border-radius: 4px; }
+    .upload-btn { width: 100%; padding: 7px; background: #f3f4f6; border: 1.5px dashed var(--border); border-radius: 6px; color: var(--sub); font-size: 12px; cursor: pointer; text-align: center; font-family: inherit; transition: all .15s; }
+    .upload-btn:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+    .img-preview { width: 100%; border-radius: 5px; border: 1px solid var(--border); display: none; object-fit: contain; max-height: 70px; }
+    .remove-img { width: 100%; padding: 4px; background: #fee2e2; border: none; border-radius: 5px; color: #ef4444; font-size: 11px; cursor: pointer; font-family: inherit; display: none; }
+    #logoUploadInput, #bgImgInput { display: none; }
+
+    /* ── 캔버스 ── */
+    .canvas-area { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 28px; background: #c8cdd8; }
+
+    /* A4 */
+    .a4-page { width: 210mm; min-height: 297mm; background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,.28); position: relative; display: flex; flex-direction: column; flex-shrink: 0; font-family: 'Malgun Gothic', sans-serif; }
+
+    .exam-header { padding: 6mm 10mm 3mm; border-bottom: 2px solid #000; display: flex; justify-content: space-between; align-items: flex-end; position: relative; cursor: pointer; }
+    .exam-header:hover { outline: 2px dashed var(--blue); outline-offset: 2px; }
+    .exam-header .hl { font-size: 9px; background: var(--blue); color: #fff; padding: 1px 5px; border-radius: 3px; position: absolute; top: 4px; right: 6px; opacity: 0; pointer-events: none; }
+    .exam-header:hover .hl { opacity: 1; }
+    .exam-header-left { display: flex; align-items: center; gap: 8px; }
+    #previewLogo { height: 36px; display: none; }
+    .exam-title { font-size: 22px; font-weight: 900; color: #000; }
+    .exam-sub { font-size: 11px; color: #555; margin-top: 2px; }
+    .exam-right { font-size: 14px; font-weight: bold; }
+
+    .exam-body { flex: 1; padding: 4mm 10mm; display: flex; gap: 5mm; min-height: 230mm; position: relative; }
+    .center-line { position: absolute; top: 4mm; bottom: 4mm; left: 50%; border-left: 2px dashed #bbb; transform: translateX(-50%); pointer-events: none; }
+    .exam-col { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+
+    /* 문제 블록 */
+    .pb { border: 2px solid #c7d2e8; border-radius: 6px; background: #f8f9ff; padding: 8px; cursor: grab; position: relative; display: flex; flex-direction: column; gap: 5px; user-select: none; transition: border-color .15s, box-shadow .15s; min-height: 56px; }
+    .pb:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(26,110,245,.12); }
+    .pb.dragging { opacity: 0.4; border: 2px dashed var(--blue); }
+    .pb.drag-over { border-color: #f59e0b; background: #fffbeb; }
+    .pb-head { display: flex; align-items: center; justify-content: space-between; }
+    .pb-num { font-size: 16px; font-weight: 900; }
+    .pb-badge { font-size: 9px; background: var(--blue-light); color: var(--blue); padding: 2px 6px; border-radius: 10px; font-weight: 600; }
+    .pb-img { border-radius: 4px; height: 50px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 11px; gap: 4px; }
+    .pb-foot { display: flex; align-items: center; gap: 4px; }
+    .sz-btn { border: 1px solid var(--border); border-radius: 3px; background: #fff; padding: 2px 6px; font-size: 10px; cursor: pointer; font-family: inherit; color: var(--sub); transition: all .12s; }
+    .sz-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .sz-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .sz-btn.del { color: #ef4444; margin-left: auto; }
+    .sz-btn.del:hover { background: #fee2e2; border-color: #fca5a5; }
+    .pb-handle { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); color: #d1d5db; font-size: 13px; }
+    .add-pb { border: 2px dashed #c7d2e8; border-radius: 6px; background: transparent; padding: 10px; width: 100%; font-family: inherit; font-size: 12px; color: #b0b8c9; cursor: pointer; transition: all .15s; text-align: center; }
+    .add-pb:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+
+    .exam-footer { padding: 3mm 10mm 4mm; border-top: 1px solid #bbb; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #888; cursor: pointer; }
+    .exam-footer:hover { outline: 2px dashed var(--blue); outline-offset: 2px; }
+    .exam-footer-c { font-weight: 700; color: #444; font-size: 11px; }
+
+    /* ── 오답노트 미리보기 CSS ── */
+    .workbook-mode .center-line { display: none; }
+    .workbook-mode .exam-col { display: none; }
+    .workbook-mode .wb-preview { display: flex; flex: 1; min-height: 230mm; border-top: 1.5px solid #374151; }
+    .wb-preview { display: none; }
+    .wb-left { width: 60%; border-right: 2px dashed #9ca3af; padding: 10px; display: flex; flex-direction: column; }
+    .wb-right { flex: 1; padding: 10px; position: relative; }
+    .wb-right-title { font-size: 10px; font-weight: 700; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 6px; }
+    .wb-label { writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); font-size: 8.5px; font-weight: 700; letter-spacing: 2px; position: absolute; left: 4px; top: 20px; color: #d1d5db; }
+
+    /* ── 오른쪽 패널 ── */
+    .right-panel { width: 196px; flex-shrink: 0; background: #fff; border-left: 1.5px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+    .order-item { display: flex; align-items: center; gap: 6px; background: #f9fafb; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 11px; }
+
+    /* ── 상태바 ── */
+    .statusbar { background: #2d3a5a; height: 22px; display: flex; align-items: center; padding: 0 16px; gap: 20px; flex-shrink: 0; }
+    .statusbar span { font-size: 11px; color: #9ca3c8; }
+    .status-ok { color: #34d399 !important; }
+
+    /* ── 모달 ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: center; justify-content: center; z-index: 999; }
+    .modal-overlay.open { display: flex; }
+    .modal-box { background: #fff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.25); width: 380px; overflow: hidden; animation: mi .2s ease; }
+    @keyframes mi { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-hd { background: var(--toolbar-bg); color: #fff; padding: 14px 18px; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; }
+    .modal-cl { cursor: pointer; opacity: .7; font-size: 18px; background: none; border: none; color: #fff; }
+    .modal-cl:hover { opacity: 1; }
+    .modal-bd { padding: 18px; }
+    .modal-ft { padding: 12px 18px; background: #f9fafb; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+    .mbtn { padding: 8px 18px; border-radius: 7px; border: none; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .mbtn.cancel { background: #f3f4f6; color: var(--sub); }
+    .mbtn.cancel:hover { background: #e5e7eb; }
+    .mbtn.confirm { background: var(--blue); color: #fff; }
+    .mbtn.confirm:hover { background: var(--blue-dark); }
+    .mbtn.reset { background: #fee2e2; color: #ef4444; }
+    .mbtn.reset:hover { background: #fca5a5; color: #fff; }
+
+    /* ── 토스트 ── */
+    .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(60px); background: #1a1d2e; color: #fff; padding: 9px 20px; border-radius: 20px; font-size: 13px; font-weight: 600; opacity: 0; transition: all .25s; pointer-events: none; z-index: 9999; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<!-- 메뉴바 -->
+<div class="menubar">
+  <div class="menubar-logo">📄 <span>HYPERX</span> 편집기</div>
+  <div class="menu-sep"></div>
+  <div style="display:flex; gap:6px; margin-right:auto;">
+    <button class="mode-tab active" id="tabExam" onclick="switchMode('exam')">시험지 템플릿</button>
+    <button class="mode-tab" id="tabWorkbook" onclick="switchMode('workbook')">오답노트 템플릿</button>
+  </div>
+  <div class="menu-item" onclick="goBack()">← 뒤로</div>
+  <div class="menu-item" onclick="saveTemplate()">저장 (Ctrl+S)</div>
+  <div class="menu-item" onclick="openModal('resetModal')">초기화</div>
+  <div class="menu-item" onclick="previewInfo()">미리보기 안내</div>
+</div>
+
+<!-- 리본 툴바 -->
+<div class="ribbon">
+
+  <!-- 파일 -->
+  <div class="ribbon-group">
+    <div class="ribbon-row">
+      <button class="rb primary" onclick="saveTemplate()">💾 저장</button>
+      <button class="rb danger" onclick="openModal('resetModal')">↺ 초기화</button>
+    </div>
+    <span class="ribbon-group-label">파일</span>
+  </div>
+
+  <!-- 페이지 -->
+  <div class="ribbon-group">
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">용지</label>
+      <select class="rs" id="paperSizeSelect" onchange="updatePreview()">
+        <option value="A4">A4</option>
+        <option value="B5">B5</option>
+        <option value="Letter">Letter</option>
+      </select>
+      <select class="rs" id="orientationSelect" onchange="updatePreview()">
+        <option value="portrait">세로</option>
+        <option value="landscape">가로</option>
+      </select>
+    </div>
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">여백</label>
+      <select class="rs" id="marginSelect" onchange="updatePreview()">
+        <option value="narrow">좁게 8mm</option>
+        <option value="normal" selected>보통 12mm</option>
+        <option value="wide">넓게 18mm</option>
+      </select>
+    </div>
+    <span class="ribbon-group-label">페이지</span>
+  </div>
+
+  <!-- 단 -->
+  <div class="ribbon-group">
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">단 수</label>
+      <div class="rtoggle">
+        <button id="col1btn" onclick="setColumns(1)">1단</button>
+        <button id="col2btn" class="active" onclick="setColumns(2)">2단</button>
+      </div>
+    </div>
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">중앙선</label>
+      <select class="rs" id="centerLineStyle" onchange="updatePreview()">
+        <option value="dashed">점선</option>
+        <option value="solid">실선</option>
+        <option value="none">없음</option>
+      </select>
+      <input type="color" class="rc" id="centerLineColor" value="#999999" onchange="updatePreview()" title="중앙선 색상"/>
+    </div>
+    <span class="ribbon-group-label">레이아웃</span>
+  </div>
+
+  <!-- 글꼴 -->
+  <div class="ribbon-group">
+    <div class="ribbon-row">
+      <select class="rs" id="fontSelect" onchange="updatePreview()" style="width:130px;">
+        <option value="'Malgun Gothic', sans-serif">맑은 고딕</option>
+        <option value="'Noto Sans KR', sans-serif">Noto Sans KR</option>
+        <option value="'Nanum Gothic', sans-serif">나눔고딕</option>
+        <option value="'Batang', serif">바탕</option>
+        <option value="'Dotum', sans-serif">돋움</option>
+      </select>
+    </div>
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">제목크기</label>
+      <input type="number" class="rn" id="titleSizeInput" value="22" min="12" max="36" onchange="updatePreview()"/>
+      <label style="font-size:11px;color:var(--sub);">pt</label>
+    </div>
+    <span class="ribbon-group-label">글꼴</span>
+  </div>
+
+  <!-- 헤더선 -->
+  <div class="ribbon-group">
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">선 색</label>
+      <input type="color" class="rc" id="headerLineColor" value="#000000" onchange="updatePreview()" title="헤더 선 색상"/>
+      <label style="font-size:11px;color:var(--sub);">두께</label>
+      <select class="rs" id="headerLineWidth" onchange="updatePreview()">
+        <option value="1px">1px</option>
+        <option value="2px" selected>2px</option>
+        <option value="3px">3px</option>
+        <option value="4px">4px</option>
+      </select>
+    </div>
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">번호색</label>
+      <input type="color" class="rc" id="numColor" value="#000000" onchange="updatePreview()" title="번호 색상"/>
+      <input type="number" class="rn" id="numSizeInput" value="22" min="12" max="36" onchange="updatePreview()" title="번호 크기"/>
+      <label style="font-size:11px;color:var(--sub);">pt</label>
+    </div>
+    <span class="ribbon-group-label">선 / 번호</span>
+  </div>
+
+  <!-- 배경 -->
+  <div class="ribbon-group">
+    <div class="ribbon-row">
+      <label style="font-size:11px;color:var(--sub);">배경색</label>
+      <input type="color" class="rc" id="bgColor" value="#ffffff" onchange="updatePreview()" title="배경 색상"/>
+    </div>
+    <div class="ribbon-row">
+      <button class="rb" onclick="document.getElementById('bgImgInput').click()">🎨 배경이미지</button>
+      <input type="file" id="bgImgInput" accept="image/*" onchange="handleBgImg(this)"/>
+    </div>
+    <span class="ribbon-group-label">배경</span>
+  </div>
+
+</div>
+
+<!-- 에디터 바디 -->
+<div class="editor-body">
+
+  <!-- 왼쪽 속성 패널 -->
+  <div class="left-panel">
+
+    <!-- 머리말 -->
+    <div class="ps" id="sec-header">
+      <div class="ps-header" onclick="toggleSec('sec-header')">📌 머리말(헤더) <span class="ci">▼</span></div>
+      <div class="ps-body">
+        <div class="pr"><span class="pl">제목</span></div>
+        <input type="text" class="pi full" id="headerTitle" value="📚 시험지 제목" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl">부제목</span></div>
+        <input type="text" class="pi full" id="headerSubtitle" value="" placeholder="(선택) 부제목" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl">우측 텍스트</span></div>
+        <input type="text" class="pi full" id="headerRight" value="이름 : _________________" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl">로고 이미지</span></div>
+        <button class="upload-btn" onclick="document.getElementById('logoUploadInput').click()">📎 이미지 업로드</button>
+        <input type="file" id="logoUploadInput" accept="image/*" onchange="handleLogoUpload(this)"/>
+        <img id="logoPreview" class="img-preview" alt="로고"/>
+        <button class="remove-img" id="removeLogoBtn" onclick="removeLogo()">✕ 로고 제거</button>
+        <div class="pr">
+          <span class="pl">로고 높이</span>
+          <input type="number" class="pi" id="logoHeight" value="36" min="16" max="80" style="width:55px;" oninput="updatePreview()"/>
+          <span style="font-size:11px;color:var(--sub);">px</span>
+        </div>
+        <div class="pr">
+          <span class="pl">헤더 표시</span>
+          <div class="ptog">
+            <button id="headerOnBtn" class="active" onclick="toggleHeader(true)">표시</button>
+            <button id="headerOffBtn" onclick="toggleHeader(false)">숨김</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 꼬리말 -->
+    <div class="ps collapsed" id="sec-footer">
+      <div class="ps-header" onclick="toggleSec('sec-footer')">📋 꼬리말(푸터) <span class="ci">▼</span></div>
+      <div class="ps-body">
+        <div class="pr"><span class="pl">좌측</span></div>
+        <input type="text" class="pi full" id="footerLeft" value="" placeholder="좌측 텍스트" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl">중앙</span></div>
+        <input type="text" class="pi full" id="footerCenter" value="- 1 -" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl">우측</span></div>
+        <input type="text" class="pi full" id="footerRight" value="학습번호 _______" oninput="updatePreview()"/>
+        <div class="pr">
+          <span class="pl">표시</span>
+          <div class="ptog">
+            <button id="footerOnBtn" class="active" onclick="toggleFooter(true)">표시</button>
+            <button id="footerOffBtn" onclick="toggleFooter(false)">숨김</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 문제 배치 -->
+    <div class="ps" id="sec-layout">
+      <div class="ps-header" onclick="toggleSec('sec-layout')">🗂️ 문제 배치 <span class="ci">▼</span></div>
+      <div class="ps-body">
+        <div class="pr">
+          <span class="pl">문제 간격</span>
+          <input type="range" style="flex:1;accent-color:var(--blue);" id="problemGap" min="4" max="30" value="12" oninput="document.getElementById('gapVal').textContent=this.value+'px'; updatePreview()"/>
+          <span id="gapVal" style="font-size:11px;color:var(--sub);min-width:32px;">12px</span>
+        </div>
+        <div class="pr">
+          <span class="pl">번호 스타일</span>
+          <select class="psel" id="numStyle" onchange="updatePreview()">
+            <option value="dot">숫자. (1.)</option>
+            <option value="paren">숫자) (1))</option>
+            <option value="bracket">[숫자]</option>
+            <option value="circle">원문자 ①</option>
+          </select>
+        </div>
+        <div class="pr">
+          <span class="pl">이미지 배경</span>
+          <input type="color" class="pc" id="imgBgColor" value="#f8f9fc" onchange="updatePreview()"/>
+        </div>
+        <div class="pr">
+          <span class="pl">이미지 표시</span>
+          <select class="psel" id="imgFit" onchange="updatePreview()">
+            <option value="contain">원본 비율</option>
+            <option value="cover">꽉 채우기</option>
+            <option value="fill">늘리기</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 이미지 삽입 -->
+    <div class="ps collapsed" id="sec-image">
+      <div class="ps-header" onclick="toggleSec('sec-image')">🖼️ 이미지 삽입 <span class="ci">▼</span></div>
+      <div class="ps-body">
+        <p style="font-size:11px;color:var(--sub);line-height:1.5;">헤더 로고 또는 배경 이미지를 업로드할 수 있습니다.</p>
+        <button class="upload-btn" onclick="document.getElementById('logoUploadInput').click()">📎 헤더 로고 업로드</button>
+        <button class="upload-btn" onclick="document.getElementById('bgImgInput').click()">🎨 배경 이미지 업로드</button>
+        <button class="upload-btn" onclick="clearAllImages()" style="border-color:#fca5a5;color:#ef4444;">✕ 모든 이미지 제거</button>
+      </div>
+    </div>
+
+    <!-- 오답노트 설정 -->
+    <div class="ps collapsed" id="sec-workbook" style="display:none;">
+      <div class="ps-header" onclick="toggleSec('sec-workbook')">📝 오답노트 설정 <span class="ci">▼</span></div>
+      <div class="ps-body">
+        <div class="pr"><span class="pl" style="width:70px;">우측 제목</span></div>
+        <input type="text" class="pi full" id="wbRightTitle" value="📝 문제 풀이 및 정답" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl" style="width:70px;">라벨 텍스트</span></div>
+        <input type="text" class="pi full" id="wbLabelText" value="필수개념정리" oninput="updatePreview()"/>
+        <div class="pr"><span class="pl" style="width:70px;">라벨 색상</span></div>
+        <input type="color" class="pc" id="wbLabelColor" value="#d1d5db" onchange="updatePreview()"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- 캔버스: A4 미리보기 -->
+  <div class="canvas-area">
+    <div class="a4-page" id="a4Preview">
+
+      <!-- 머리말 -->
+      <div class="exam-header" id="headerPreview" onclick="focusHeader()">
+        <span class="hl">클릭하여 편집</span>
+        <div class="exam-header-left">
+          <img id="previewLogo" src="" alt="로고"/>
+          <div>
+            <div class="exam-title" id="previewTitle">📚 시험지 제목</div>
+            <div class="exam-sub" id="previewSubtitle"></div>
+          </div>
+        </div>
+        <div class="exam-right" id="previewRight">이름 : _________________</div>
+      </div>
+
+      <!-- 문제 배치 영역 -->
+      <div class="exam-body" id="bodyPreview">
+        <div class="center-line" id="centerLine"></div>
+        <div class="exam-col" id="col0" ondragover="allowDrop(event)" ondrop="dropToCol(event,0)"></div>
+        <div class="exam-col" id="col1c" ondragover="allowDrop(event)" ondrop="dropToCol(event,1)"></div>
+        
+        <div class="wb-preview" id="wbPreview">
+          <div class="wb-left" id="wbPreviewLeft">
+            <div style="font-size:9px;color:#9ca3af;margin-bottom:4px;" id="wbPreviewSource">📚 시험지 제목 | 부제목</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-size:22px;font-weight:900;" id="wbPreviewNum">1.</span>
+              <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;background:#dbeafe;color:#1d4ed8;">오답노트</span>
+            </div>
+            <div style="flex:1;background:#f8f9ff;border:2px solid #c7d2e8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;">문제 이미지 미리보기</div>
+          </div>
+          <div class="wb-right">
+            <div class="wb-right-title" id="wbPreviewTitle">📝 문제 풀이 및 정답</div>
+            <div class="wb-label" id="wbPreviewLabel">필수개념정리</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 꼬리말 -->
+      <div class="exam-footer" id="footerPreview" onclick="focusFooter()">
+        <span id="previewFooterLeft"></span>
+        <span class="exam-footer-c" id="previewFooterCenter">- 1 -</span>
+        <span id="previewFooterRight">학습번호 _______</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 오른쪽 패널 -->
+  <div class="right-panel">
+    <div class="ps" id="sec-order">
+      <div class="ps-header" onclick="toggleSec('sec-order')">📐 블록 순서 <span class="ci">▼</span></div>
+      <div class="ps-body" id="orderList" style="gap:5px;">
+        <!-- JS로 채워짐 -->
+      </div>
+    </div>
+    <div class="ps" id="sec-summary">
+      <div class="ps-header">📋 설정 요약</div>
+      <div class="ps-body" id="summaryPanel" style="gap:3px;"></div>
+    </div>
+    <div class="ps">
+      <div class="ps-header">➕ 문제 추가</div>
+      <div class="ps-body">
+        <button class="add-pb" onclick="addProblemBlock(0)">+ 왼쪽 단에 추가</button>
+        <button class="add-pb" onclick="addProblemBlock(1)">+ 오른쪽 단에 추가</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 상태바 -->
+<div class="statusbar">
+  <span class="status-ok" id="statusSaved">✓ 저장됨</span>
+  <span id="statusMsg">A4 · 세로 · 2단 · 보통 여백</span>
+  <span id="blockCount">문제 4개</span>
+</div>
+
+<!-- 초기화 모달 -->
+<div class="modal-overlay" id="resetModal">
+  <div class="modal-box">
+    <div class="modal-hd">↺ 템플릿 초기화 <button class="modal-cl" onclick="closeModal('resetModal')">✕</button></div>
+    <div class="modal-bd">
+      <p style="font-size:14px;line-height:1.7;">현재 설정을 <strong>기본값으로 초기화</strong>하시겠습니까?<br/>이 작업은 되돌릴 수 없습니다.</p>
+    </div>
+    <div class="modal-ft">
+      <button class="mbtn cancel" onclick="closeModal('resetModal')">취소</button>
+      <button class="mbtn reset" onclick="resetTemplate()">초기화</button>
+    </div>
+  </div>
+</div>
+
+<!-- 저장 완료 모달 -->
+<div class="modal-overlay" id="saveModal">
+  <div class="modal-box">
+    <div class="modal-hd">💾 저장 완료 <button class="modal-cl" onclick="closeModal('saveModal')">✕</button></div>
+    <div class="modal-bd">
+      <p style="font-size:14px;line-height:1.7;">✅ 템플릿이 저장되었습니다.<br/>시험지 생성(PDF 만들기) 시 자동으로 이 설정이 적용됩니다.</p>
+    </div>
+    <div class="modal-ft">
+      <button class="mbtn confirm" onclick="closeModal('saveModal')">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 토스트 -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  기본 템플릿
+// ═══════════════════════════════════════════
+const DEFAULT = {
+  paperSize:'A4', orientation:'portrait', margin:'normal', columns:2,
+  font:"'Malgun Gothic', sans-serif", bgColor:'#ffffff', bgImage:'',
+  showHeader:true,
+  headerTitle:'📚 시험지 제목', headerSubtitle:'', headerRight:'이름 : _________________',
+  logoData:'', logoHeight:36,
+  headerLineColor:'#000000', headerLineWidth:'2px', titleSize:22,
+  numColor:'#000000', numSize:22, numStyle:'dot',
+  problemGap:12, imgBgColor:'#f8f9fc', imgFit:'contain',
+  centerLineStyle:'dashed', centerLineColor:'#999999',
+  showFooter:true,
+  footerLeft:'', footerCenter:'- 1 -', footerRight:'학습번호 _______',
+  problemBlocks:[
+    {id:'p1', size:'normal', col:0},
+    {id:'p2', size:'normal', col:0},
+    {id:'p3', size:'normal', col:1},
+    {id:'p4', size:'normal', col:1},
+  ]
+};
+
+const DEFAULT_WORKBOOK = {
+  ...DEFAULT,
+  columns: 1,
+  wbRightTitle: '📝 문제 풀이 및 정답',
+  wbLabelText: '필수개념정리',
+  wbLabelColor: '#d1d5db'
+};
+
+let currentMode = 'exam';
+let examT = JSON.parse(JSON.stringify(DEFAULT));
+let workbookT = JSON.parse(JSON.stringify(DEFAULT_WORKBOOK));
+let T = examT;
+let dragSrcIdx = null;
+
+function switchMode(mode) {
+  if (currentMode === mode) return;
+  gather(); // 현재 상태 저장
+  if (currentMode === 'exam') examT = T;
+  else workbookT = T;
+
+  currentMode = mode;
+  document.getElementById('tabExam').classList.toggle('active', mode === 'exam');
+  document.getElementById('tabWorkbook').classList.toggle('active', mode === 'workbook');
+  
+  if (mode === 'exam') {
+    T = examT;
+    document.getElementById('sec-layout').style.display = 'block';
+    document.getElementById('sec-workbook').style.display = 'none';
+    document.getElementById('a4Preview').classList.remove('workbook-mode');
+  } else {
+    T = workbookT;
+    document.getElementById('sec-layout').style.display = 'none';
+    document.getElementById('sec-workbook').style.display = 'block';
+    document.getElementById('a4Preview').classList.add('workbook-mode');
+  }
+  
+  applyToUI();
+  renderBlocks();
+  updatePreview();
+}
+
+// ── 초기화 ──
+function init() {
+  const savedE = localStorage.getItem('examTemplate');
+  const savedW = localStorage.getItem('workbookTemplate');
+  if (savedE) {
+    try { examT = { ...DEFAULT, ...JSON.parse(savedE) }; }
+    catch(e) { examT = JSON.parse(JSON.stringify(DEFAULT)); }
+  }
+  if (savedW) {
+    try { workbookT = { ...DEFAULT_WORKBOOK, ...JSON.parse(savedW) }; }
+    catch(e) { workbookT = JSON.parse(JSON.stringify(DEFAULT_WORKBOOK)); }
+  }
+  T = examT;
+  applyToUI();
+  renderBlocks();
+  updatePreview();
+}
+
+// ── UI → T ──
+function gather() {
+  T.paperSize    = v('paperSizeSelect');
+  T.orientation  = v('orientationSelect');
+  T.margin       = v('marginSelect');
+  T.font         = v('fontSelect');
+  T.bgColor      = v('bgColor');
+  T.headerTitle  = v('headerTitle');
+  T.headerSubtitle=v('headerSubtitle');
+  T.headerRight  = v('headerRight');
+  T.headerLineColor=v('headerLineColor');
+  T.headerLineWidth=v('headerLineWidth');
+  T.titleSize    = +v('titleSizeInput') || 22;
+  T.numColor     = v('numColor');
+  T.numSize      = +v('numSizeInput') || 22;
+  T.numStyle     = v('numStyle');
+  T.problemGap   = +v('problemGap') || 12;
+  T.imgBgColor   = v('imgBgColor');
+  T.imgFit       = v('imgFit');
+  T.centerLineStyle=v('centerLineStyle');
+  T.centerLineColor=v('centerLineColor');
+  T.footerLeft   = v('footerLeft');
+  T.footerCenter = v('footerCenter');
+  T.footerRight  = v('footerRight');
+  T.logoHeight   = +v('logoHeight') || 36;
+  
+  if (currentMode === 'workbook') {
+    T.wbRightTitle = v('wbRightTitle');
+    T.wbLabelText = v('wbLabelText');
+    T.wbLabelColor = v('wbLabelColor');
+  }
+}
+
+function v(id) { return document.getElementById(id).value; }
+
+// ── T → UI ──
+function applyToUI() {
+  setV('paperSizeSelect', T.paperSize);
+  setV('orientationSelect', T.orientation);
+  setV('marginSelect', T.margin);
+  setV('fontSelect', T.font);
+  setV('bgColor', T.bgColor);
+  setV('headerTitle', T.headerTitle);
+  setV('headerSubtitle', T.headerSubtitle);
+  setV('headerRight', T.headerRight);
+  setV('headerLineColor', T.headerLineColor);
+  setV('headerLineWidth', T.headerLineWidth);
+  setV('titleSizeInput', T.titleSize);
+  setV('numColor', T.numColor);
+  setV('numSizeInput', T.numSize);
+  setV('numStyle', T.numStyle);
+  setV('problemGap', T.problemGap);
+  setV('imgBgColor', T.imgBgColor);
+  setV('imgFit', T.imgFit);
+  setV('centerLineStyle', T.centerLineStyle);
+  setV('centerLineColor', T.centerLineColor);
+  setV('footerLeft', T.footerLeft);
+  setV('footerCenter', T.footerCenter);
+  setV('footerRight', T.footerRight);
+  setV('logoHeight', T.logoHeight);
+  document.getElementById('gapVal').textContent = T.problemGap + 'px';
+  updateColBtn(T.columns);
+  setToggle('headerOnBtn','headerOffBtn', T.showHeader);
+  setToggle('footerOnBtn','footerOffBtn', T.showFooter);
+  if (T.logoData) {
+    document.getElementById('logoPreview').src = T.logoData;
+    document.getElementById('logoPreview').style.display = 'block';
+    document.getElementById('removeLogoBtn').style.display = 'block';
+  } else {
+    document.getElementById('logoPreview').style.display = 'none';
+    document.getElementById('removeLogoBtn').style.display = 'none';
+  }
+
+  if (currentMode === 'workbook') {
+    setV('wbRightTitle', T.wbRightTitle || '📝 문제 풀이 및 정답');
+    setV('wbLabelText', T.wbLabelText || '필수개념정리');
+    setV('wbLabelColor', T.wbLabelColor || '#d1d5db');
+  }
+}
+
+function setV(id, val) { document.getElementById(id).value = val; }
+function setToggle(onId, offId, val) {
+  document.getElementById(onId).classList.toggle('active', val);
+  document.getElementById(offId).classList.toggle('active', !val);
+}
+
+// ── 미리보기 업데이트 ──
+function updatePreview() {
+  gather();
+  const page = document.getElementById('a4Preview');
+  const mm = {narrow:'8mm', normal:'12mm', wide:'18mm'}[T.margin] || '12mm';
+
+  // 배경
+  page.style.background = T.bgColor;
+  if (T.bgImage) { page.style.backgroundImage = `url('${T.bgImage}')`; page.style.backgroundSize = 'cover'; }
+  else { page.style.backgroundImage = ''; }
+  page.style.fontFamily = T.font;
+
+  // 헤더
+  const hdr = document.getElementById('headerPreview');
+  hdr.style.display = T.showHeader ? '' : 'none';
+  hdr.style.borderBottomColor = T.headerLineColor;
+  hdr.style.borderBottomWidth = T.headerLineWidth;
+  hdr.style.padding = `${mm} ${mm} 3mm`;
+  document.getElementById('previewTitle').textContent = T.headerTitle;
+  document.getElementById('previewTitle').style.fontSize = T.titleSize + 'px';
+  document.getElementById('previewTitle').style.fontFamily = T.font;
+  document.getElementById('previewSubtitle').textContent = T.headerSubtitle;
+  document.getElementById('previewRight').textContent = T.headerRight;
+
+  const logo = document.getElementById('previewLogo');
+  if (T.logoData) { logo.src = T.logoData; logo.style.height = T.logoHeight + 'px'; logo.style.display = 'block'; }
+  else { logo.style.display = 'none'; }
+
+  // 바디
+  const body = document.getElementById('bodyPreview');
+  body.style.padding = `${mm} ${mm}`;
+  body.style.gap = T.columns === 1 ? '0' : '5mm';
+
+  // 중앙선
+  const cl = document.getElementById('centerLine');
+  if (T.columns === 2 && T.centerLineStyle !== 'none') {
+    cl.style.display = 'block';
+    cl.style.borderLeft = `2px ${T.centerLineStyle} ${T.centerLineColor}`;
+  } else { cl.style.display = 'none'; }
+
+  document.getElementById('col1c').style.display = T.columns === 1 ? 'none' : '';
+
+  // 꼬리말
+  const ftr = document.getElementById('footerPreview');
+  ftr.style.display = T.showFooter ? '' : 'none';
+  ftr.style.padding = `3mm ${mm} 4mm`;
+  document.getElementById('previewFooterLeft').textContent = T.footerLeft;
+  document.getElementById('previewFooterCenter').textContent = T.footerCenter;
+  document.getElementById('previewFooterRight').textContent = T.footerRight;
+
+  // 문제 gap
+  document.querySelectorAll('.exam-col').forEach(c => c.style.gap = T.problemGap + 'px');
+
+  // 상태바
+  const ml = {narrow:'좁게', normal:'보통', wide:'넓게'}[T.margin];
+  document.getElementById('statusMsg').textContent = `${T.paperSize} · ${T.orientation==='portrait'?'세로':'가로'} · ${T.columns}단 · ${ml} 여백`;
+  document.getElementById('blockCount').textContent = `문제 ${T.problemBlocks.length}개`;
+
+  if (currentMode === 'workbook') {
+    document.getElementById('wbPreviewTitle').textContent = T.wbRightTitle;
+    document.getElementById('wbPreviewLabel').textContent = T.wbLabelText;
+    document.getElementById('wbPreviewLabel').style.color = T.wbLabelColor;
+    document.getElementById('wbPreviewSource').textContent = T.headerTitle + (T.headerSubtitle ? ' | ' + T.headerSubtitle : '');
+  }
+
+  updateSummary();
+  renderOrderList();
+}
+
+function updateSummary() {
+  const ml = {narrow:'좁게', normal:'보통', wide:'넓게'}[T.margin];
+  const rows = [
+    ['용지', T.paperSize],
+    ['방향', T.orientation==='portrait'?'세로':'가로'],
+    ['여백', ml],
+    ['단 수', T.columns + '단'],
+    ['제목 크기', T.titleSize + 'pt'],
+    ['번호 크기', T.numSize + 'pt'],
+    ['문제 수', T.problemBlocks.length + '개'],
+  ];
+  document.getElementById('summaryPanel').innerHTML = rows.map(([k,v2]) =>
+    `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px solid #f3f4f6;"><span style="color:var(--sub)">${k}</span><span style="font-weight:600">${v2}</span></div>`
+  ).join('');
+}
+
+// ── 문제 블록 렌더 ──
+function renderBlocks() {
+  const c0 = document.getElementById('col0');
+  const c1 = document.getElementById('col1c');
+  c0.innerHTML = '';
+  c1.innerHTML = '';
+  if (T.columns === 1) {
+    T.problemBlocks.forEach((b, i) => c0.appendChild(makeBlock(b, i)));
+    c0.appendChild(makeAddBtn(0));
+  } else {
+    T.problemBlocks.filter(b => b.col === 0).forEach(b => c0.appendChild(makeBlock(b, T.problemBlocks.indexOf(b))));
+    T.problemBlocks.filter(b => b.col === 1).forEach(b => c1.appendChild(makeBlock(b, T.problemBlocks.indexOf(b))));
+    c0.appendChild(makeAddBtn(0));
+    c1.appendChild(makeAddBtn(1));
+  }
+}
+
+function makeBlock(b, idx) {
+  const d = document.createElement('div');
+  d.className = 'pb';
+  d.draggable = true;
+  d.dataset.idx = idx;
+  const numLabel = getNum(idx + 1, T.numStyle);
+  d.innerHTML = `
+    <div class="pb-head">
+      <span class="pb-num" style="color:${T.numColor};font-size:${T.numSize}px;">${numLabel}</span>
+      <span class="pb-badge">${b.size === 'long' ? '긴 문제' : '일반'}</span>
+    </div>
+    <div class="pb-img" style="background:${T.imgBgColor};height:${b.size==='long'?'90px':'50px'};">🖼️ 문제 이미지 영역</div>
+    <div class="pb-foot">
+      <button class="sz-btn${b.size!=='long'?' active':''}" onclick="setBlockSize(${idx},'normal');event.stopPropagation()">일반</button>
+      <button class="sz-btn${b.size==='long'?' active':''}" onclick="setBlockSize(${idx},'long');event.stopPropagation()">긴 문제</button>
+      <button class="sz-btn del" onclick="removeBlock(${idx});event.stopPropagation()">✕ 삭제</button>
+    </div>
+    <div class="pb-handle">⠿</div>
+  `;
+  d.addEventListener('dragstart', e => { dragSrcIdx = idx; d.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+  d.addEventListener('dragend', () => d.classList.remove('dragging'));
+  d.addEventListener('dragover', e => { e.preventDefault(); d.classList.add('drag-over'); });
+  d.addEventListener('dragleave', () => d.classList.remove('drag-over'));
+  d.addEventListener('drop', e => {
+    e.preventDefault(); d.classList.remove('drag-over');
+    if (dragSrcIdx !== null && dragSrcIdx !== idx) {
+      const arr = T.problemBlocks;
+      const [moved] = arr.splice(dragSrcIdx, 1);
+      arr.splice(idx, 0, moved);
+      dragSrcIdx = null;
+      renderBlocks(); updatePreview();
+    }
+  });
+  return d;
+}
+
+function makeAddBtn(col) {
+  const btn = document.createElement('button');
+  btn.className = 'add-pb';
+  btn.textContent = '+ 문제 블록 추가';
+  btn.onclick = () => addProblemBlock(col);
+  return btn;
+}
+
+function allowDrop(e) { e.preventDefault(); }
+function dropToCol(e, col) {
+  e.preventDefault();
+  if (dragSrcIdx !== null) {
+    T.problemBlocks[dragSrcIdx].col = col;
+    dragSrcIdx = null;
+    renderBlocks(); updatePreview();
+  }
+}
+
+function addProblemBlock(col) {
+  const n = T.problemBlocks.length + 1;
+  T.problemBlocks.push({ id: 'p' + n, size: 'normal', col: col });
+  renderBlocks(); updatePreview();
+  showToast('문제 블록이 추가되었습니다');
+}
+
+function removeBlock(idx) {
+  if (T.problemBlocks.length <= 1) { showToast('최소 1개 이상의 블록이 필요합니다'); return; }
+  T.problemBlocks.splice(idx, 1);
+  renderBlocks(); updatePreview();
+  showToast('문제 블록이 제거되었습니다');
+}
+
+function setBlockSize(idx, size) {
+  T.problemBlocks[idx].size = size;
+  renderBlocks(); updatePreview();
+}
+
+function renderOrderList() {
+  const el = document.getElementById('orderList');
+  el.innerHTML = '';
+  T.problemBlocks.forEach((b, i) => {
+    const row = document.createElement('div');
+    row.className = 'order-item';
+    row.innerHTML = `<span style="color:var(--sub);font-size:10px;">⠿</span><span style="flex:1;">${getNum(i+1,T.numStyle)} ${b.size==='long'?'[긴]':''}</span><span style="font-size:10px;color:var(--sub);">단 ${b.col+1}</span>`;
+    el.appendChild(row);
+  });
+}
+
+function getNum(n, style) {
+  const circles = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+  if (style==='paren') return n + ')';
+  if (style==='bracket') return '[' + n + ']';
+  if (style==='circle') return circles[n-1] || n + '.';
+  return n + '.';
+}
+
+// ── 컬럼 ──
+function setColumns(n) {
+  T.columns = n;
+  updateColBtn(n);
+  if (n === 1) T.problemBlocks.forEach(b => b.col = 0);
+  else T.problemBlocks.forEach((b, i) => b.col = i % 2);
+  renderBlocks(); updatePreview();
+}
+function updateColBtn(n) {
+  document.getElementById('col1btn').classList.toggle('active', n === 1);
+  document.getElementById('col2btn').classList.toggle('active', n === 2);
+}
+
+// ── 헤더 / 꼬리말 ──
+function toggleHeader(on) { T.showHeader = on; setToggle('headerOnBtn','headerOffBtn',on); updatePreview(); }
+function toggleFooter(on) { T.showFooter = on; setToggle('footerOnBtn','footerOffBtn',on); updatePreview(); }
+
+function focusHeader() {
+  document.getElementById('sec-header').classList.remove('collapsed');
+  document.getElementById('headerTitle').focus();
+}
+function focusFooter() {
+  document.getElementById('sec-footer').classList.remove('collapsed');
+  document.getElementById('footerCenter').focus();
+}
+
+// ── 로고 / 배경 이미지 ──
+function handleLogoUpload(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    T.logoData = e.target.result;
+    document.getElementById('logoPreview').src = T.logoData;
+    document.getElementById('logoPreview').style.display = 'block';
+    document.getElementById('removeLogoBtn').style.display = 'block';
+    updatePreview();
+    showToast('로고 이미지가 업로드되었습니다');
+  };
+  reader.readAsDataURL(file);
+}
+function removeLogo() {
+  T.logoData = '';
+  document.getElementById('logoPreview').style.display = 'none';
+  document.getElementById('removeLogoBtn').style.display = 'none';
+  document.getElementById('logoUploadInput').value = '';
+  updatePreview(); showToast('로고가 제거되었습니다');
+}
+function handleBgImg(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { T.bgImage = e.target.result; updatePreview(); showToast('배경 이미지가 설정되었습니다'); };
+  reader.readAsDataURL(file);
+}
+function clearAllImages() {
+  T.logoData = ''; T.bgImage = '';
+  document.getElementById('logoPreview').style.display = 'none';
+  document.getElementById('removeLogoBtn').style.display = 'none';
+  updatePreview(); showToast('모든 이미지가 제거되었습니다');
+}
+
+// ── 저장 ──
+function saveTemplate() {
+  gather();
+  if (currentMode === 'exam') {
+    examT = T;
+    localStorage.setItem('examTemplate', JSON.stringify(examT));
+  } else {
+    workbookT = T;
+    localStorage.setItem('workbookTemplate', JSON.stringify(workbookT));
+  }
+  document.getElementById('statusSaved').textContent = '✓ 저장됨';
+  openModal('saveModal');
+}
+
+// ── 초기화 ──
+function resetTemplate() {
+  if (currentMode === 'exam') {
+    T = JSON.parse(JSON.stringify(DEFAULT));
+    examT = T;
+    localStorage.removeItem('examTemplate');
+  } else {
+    T = JSON.parse(JSON.stringify(DEFAULT_WORKBOOK));
+    workbookT = T;
+    localStorage.removeItem('workbookTemplate');
+  }
+  applyToUI(); renderBlocks(); updatePreview();
+  closeModal('resetModal');
+  showToast('기본 템플릿으로 초기화되었습니다');
+}
+
+// ── 섹션 토글 ──
+function toggleSec(id) { document.getElementById(id).classList.toggle('collapsed'); }
+
+// ── 뒤로 ──
+function goBack() {
+  if (confirm('저장하지 않은 변경사항이 있을 수 있습니다. 나가시겠습니까?')) location.href = 'index.html';
+}
+
+function previewInfo() { showToast('PDF 생성 시 저장된 템플릿이 자동으로 적용됩니다'); }
+
+// ── 모달 ──
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── 토스트 ──
+let _tt;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(_tt); _tt = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── 단축키 ──
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key === 's') { e.preventDefault(); saveTemplate(); }
+});
+
+init();
+</script>
+</body>
+</html>

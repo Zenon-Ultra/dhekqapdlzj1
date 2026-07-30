@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HYPERX 오답메이커</title>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Pretendard', sans-serif;
+    }
+
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Animated Background Elements */
+    .bg-glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, rgba(15, 23, 42, 0) 70%);
+      top: -200px;
+      left: -200px;
+      border-radius: 50%;
+      z-index: 0;
+      animation: pulse 8s infinite alternate ease-in-out;
+    }
+
+    .bg-glow-2 {
+      position: absolute;
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(15, 23, 42, 0) 70%);
+      bottom: -300px;
+      right: -300px;
+      border-radius: 50%;
+      z-index: 0;
+      animation: pulse 10s infinite alternate-reverse ease-in-out;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.6;
+      }
+
+      100% {
+        transform: scale(1.1);
+        opacity: 1;
+      }
+    }
+
+    /* Navbar */
+    nav {
+      padding: 24px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: 800;
+      background: linear-gradient(to right, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .nav-links a {
+      color: #cbd5e1;
+      text-decoration: none;
+      margin-left: 32px;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    .nav-links a:hover {
+      color: #ffffff;
+    }
+
+    /* Hero Section */
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      z-index: 10;
+      padding: 0 20px;
+      margin-top: -50px;
+    }
+
+    .badge {
+      background: rgba(56, 189, 248, 0.1);
+      color: #38bdf8;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      animation: slideUp 0.8s ease-out;
+    }
+
+    h1 {
+      font-size: 64px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 24px;
+      animation: slideUp 1s ease-out;
+    }
+
+    h1 span {
+      background: linear-gradient(to right, #38bdf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.subtitle {
+      font-size: 20px;
+      color: #94a3b8;
+      max-width: 600px;
+      margin-bottom: 48px;
+      line-height: 1.6;
+      animation: slideUp 1.2s ease-out;
+    }
+
+    /* Actions */
+    .actions {
+      display: flex;
+      gap: 20px;
+      animation: slideUp 1.4s ease-out;
+    }
+
+    .btn {
+      padding: 16px 36px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+      color: #ffffff;
+      box-shadow: 0 10px 25px -5px rgba(56, 189, 248, 0.4);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 35px -5px rgba(56, 189, 248, 0.5);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-3px);
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Features Cards (Floating) */
+    .floating-cards {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .f-card {
+      position: absolute;
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      animation: float 6s ease-in-out infinite;
+    }
+
+    .f-card-1 {
+      top: 25%;
+      left: 10%;
+      animation-delay: 0s;
+    }
+
+    .f-card-2 {
+      bottom: 20%;
+      right: 12%;
+      animation-delay: -3s;
+    }
+
+    .f-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(56, 189, 248, 0.1);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+    }
+
+    .f-text h4 {
+      font-size: 16px;
+      color: #f1f5f9;
+      margin-bottom: 4px;
+    }
+
+    .f-text p {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+
+    @keyframes float {
+      0% {
+        transform: translateY(0px);
+      }
+
+      50% {
+        transform: translateY(-20px);
+      }
+
+      100% {
+        transform: translateY(0px);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bg-glow"></div>
+  <div class="bg-glow-2"></div>
+
+  <div class="floating-cards">
+    <div class="f-card f-card-1">
+      <div class="f-icon">⚡</div>
+      <div class="f-text">
+        <h4>AI 자동 인식</h4>
+        <p>문항과 해설을 완벽하게 분리</p>
+      </div>
+    </div>
+    <div class="f-card f-card-2">
+      <div class="f-icon">📚</div>
+      <div class="f-text">
+        <h4>나만의 오답노트</h4>
+        <p>틀린 문제만 모아서 새 교재로</p>
+      </div>
+    </div>
+  </div>
+
+  <nav>
+    <div class="logo">HYPERX</div>
+    <div class="nav-links">
+      <a href="/login">로그인</a>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="badge">V2.0 업데이트 완료</div>
+    <h1>압도적인 효율의<br><span>오답노트 생성기</span></h1>
+    <p class="subtitle">PDF 파일만 업로드하세요. 인공지능이 문항을 분석하여 당신만의 완벽한 맞춤형 교재를 단 몇 초 만에 만들어 드립니다.</p>
+    <div class="actions">
+      <a href="/login" class="btn btn-primary">시작하기</a>
+      <a href="/main" class="btn btn-secondary">교재 둘러보기</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>내 교재 목록</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap"
+    rel="stylesheet" />
+  <style>
+    /* 팝업 배경 어둡게 깔아주는 오버레이 */
+    .popup-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    /* 팝업 본체 디자인 */
+    .popup-box {
+      background-color: #ffffff;
+      width: 90%;
+      max-width: 400px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+      animation: popIn 0.3s ease-out forwards;
+    }
+
+    /* 팝업 등장 애니메이션 */
+    @keyframes popIn {
+      from {
+        transform: scale(0.9);
+        opacity: 0;
+      }
+
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* 팝업 상단 헤더 */
+    .popup-header {
+      background-color: #4A90E2;
+      color: white;
+      padding: 16px 20px;
+      font-size: 18px;
+      font-weight: bold;
+      margin: 0;
+    }
+
+    /* 팝업 내용 부분 */
+    .popup-content {
+      padding: 20px;
+      font-size: 15px;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    /* 팝업 하단 컨트롤 (오늘 하루 보지 않기 & 닫기) */
+    .popup-footer {
+      background-color: #f8f9fa;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #eeeeee;
+    }
+
+    .popup-footer label {
+      font-size: 13px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .close-btn {
+      background-color: #333;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .close-btn:hover {
+      background-color: #555;
+    }
+  </style>
+</head>
+
+
+<body>
+
+  <div class="popup-overlay" id="noticePopup">
+    <div class="popup-box">
+      <h2 class="popup-header">📢공지사항</h2>
+
+      <div class="popup-content">
+        <p><strong>[이용사항]</strong><br>
+          해당 서비스는 문항 저작권법을 어기는 불법사이트니 알아서 잘쓰도록하세요 걸리면 본인책임입니다 </p>
+        <p>또한 AI 인식한계로 한 문항 섹션에 2개의 문항이 있는 경우가 있으니 알아서 잘쓰세요</p>
+      </div>
+
+      <div class="popup-footer">
+        <label>
+          <input type="checkbox" id="hideToday"> 오늘 하루 보지 않기
+        </label>
+        <button class="close-btn" onclick="closePopup()">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 팝업 닫기 기능
+    function closePopup() {
+      const popup = document.getElementById('noticePopup');
+      const hideTodayChecked = document.getElementById('hideToday').checked;
+
+
+      // 팝업 숨기기
+      popup.style.display = 'none';
+    }
+
+  </script>
+
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --blue: #1a6ef5;
+      --blue-dark: #1458cc;
+      --blue-light: #e8f0fe;
+      --bg: #f4f6fb;
+      --card-bg: #ffffff;
+      --text: #1a1d2e;
+      --sub: #6b7280;
+      --border: #e5e7ef;
+      --red: #ef4444;
+      --pin: #f59e0b;
+      --badge: #dbeafe;
+      --badge-text: #1d4ed8;
+      --shadow: 0 2px 16px rgba(26, 110, 245, 0.08);
+      --radius: 16px;
+    }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      padding: 0 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .logo {
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--blue);
+      letter-spacing: -0.5px;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all .18s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--blue-dark);
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: #fff;
+      color: var(--blue);
+      border: 1.5px solid var(--blue);
+    }
+
+    .btn-outline:hover {
+      background: var(--blue-light);
+    }
+
+    /* ── Main layout ── */
+    .main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 36px 32px;
+    }
+
+    /* ── Tab ── */
+    .tab-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .tab {
+      padding: 10px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--sub);
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-family: inherit;
+      position: relative;
+      transition: color .15s;
+    }
+
+    .tab.active {
+      color: var(--blue);
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      right: 0;
+      height: 2.5px;
+      background: var(--blue);
+      border-radius: 2px 2px 0 0;
+    }
+
+    .tab-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    /* ── Search ── */
+    .search-wrap {
+      background: #fff;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      margin-bottom: 28px;
+      transition: border-color .15s;
+    }
+
+    .search-wrap:focus-within {
+      border-color: var(--blue);
+    }
+
+    .search-wrap svg {
+      color: var(--sub);
+      flex-shrink: 0;
+    }
+
+    .search-wrap input {
+      border: none;
+      outline: none;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      width: 100%;
+      padding: 12px 0;
+      background: transparent;
+    }
+
+    .search-wrap input::placeholder {
+      color: #b0b8c9;
+    }
+
+    /* ── Grid ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 24px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1.5px solid var(--border);
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform .2s ease, box-shadow .2s ease;
+      position: relative;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 32px rgba(26, 110, 245, 0.14);
+      border-color: var(--blue);
+    }
+
+    .card-thumb {
+      width: 100%;
+      aspect-ratio: 3/4;
+      object-fit: cover;
+      display: block;
+      background: #eef1f8;
+    }
+
+    /* placeholder when no image */
+    .card-thumb-placeholder {
+      width: 100%;
+      aspect-ratio: 3/4;
+      background: linear-gradient(135deg, #e8f0fe 0%, #dbeafe 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--blue);
+      font-size: 42px;
+    }
+
+    .pin-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.92);
+      border: none;
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--pin);
+      font-size: 16px;
+      transition: background .15s;
+      z-index: 2;
+    }
+
+    .pin-btn:hover {
+      background: #fff;
+    }
+
+    .card-body {
+      padding: 14px 14px 16px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+
+    .card-sub {
+      font-size: 12px;
+      color: var(--sub);
+      margin-bottom: 10px;
+    }
+
+    .card-badge {
+      display: inline-block;
+      background: var(--badge);
+      color: var(--badge-text);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin-bottom: 8px;
+    }
+
+    .card-id {
+      font-size: 11px;
+      color: #b0b8c9;
+    }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      margin-top: 40px;
+    }
+
+    .page-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sub);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .15s;
+    }
+
+    .page-btn:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
+    .page-btn.active {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+
+    .page-btn:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--sub);
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    .empty p {
+      font-size: 15px;
+    }
+  </style>
+  </head>
+
+  <body>
+
+    <header>
+      <div class="logo">📚 HYPERX 오답메이커</div>
+      <div class="header-right">
+        <button class="btn btn-outline" onclick="location.href='/admin'"
+          style="border-color: #6366f1; color: #4338ca; background: #e0e7ff;">
+          🛠️ 관리자
+        </button>
+        <button class="btn btn-outline" onclick="location.href='template_editor.html'"
+          style="border-color: #93c5fd; color: #1d4ed8;">
+          ⚙️ 템플릿 수정하기
+        </button>
+        <button class="btn btn-primary" onclick="location.href='new-textbook.html'">
+          + 새 교재 채점
+        </button>
+        <button class="btn btn-outline" onclick="location.href='tutorial.html'">
+          ▶ 튜토리얼
+        </button>
+      </div>
+    </header>
+
+    <div class="main">
+      <!-- Tab row -->
+      <div class="tab-row">
+        <div class="tabs">
+          <button class="tab active">내 목록</button>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="search-wrap">
+        <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" />
+        </svg>
+        <input type="text" id="searchInput" placeholder="교재명 또는 ID로 검색..." oninput="filterCards()" />
+      </div>
+
+
+
+
+
+
+      <!-- 카드 추가 예시 (필요 시 복사해서 사용) -->
+      <!-- 
+    <a class="card" href="textbook-detail.html?id=XXXX" data-title="교재명" data-id="XXXX">
+      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+      <img class="card-thumb" src="이미지URL" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="card-thumb-placeholder" style="display:none;">📖</div>
+      <div class="card-body">
+        <div class="card-title">교재명</div>
+        <div class="card-sub">과목 (개정)</div>
+        <div class="card-badge">빠른정답</div>
+        <div class="card-id">ID XXXX</div>
+      </div>
+    </a>
+    -->
+
+
+      <!-- Empty state (hidden by default) -->
+      <div class="empty" id="emptyState" style="display:none;">
+        <div class="empty-icon">🔍</div>
+        <p>검색 결과가 없습니다.</p>
+      </div>
+
+      <!-- Pagination -->
+
+      <script>
+        // ── Search filter ──
+        function filterCards() {
+          const q = document.getElementById('searchInput').value.toLowerCase();
+          const cards = document.querySelectorAll('#cardGrid .card');
+          let visible = 0;
+          cards.forEach(card => {
+            const title = (card.dataset.title || '').toLowerCase();
+            const id = (card.dataset.id || '').toLowerCase();
+            const show = title.includes(q) || id.includes(q);
+            card.style.display = show ? '' : 'none';
+            if (show) visible++;
+          });
+          document.getElementById('emptyState').style.display = visible === 0 ? 'block' : 'none';
+        }
+
+        // ── Pin toggle ──
+        function togglePin(btn) {
+          const pinned = btn.dataset.pinned === 'true';
+          btn.dataset.pinned = !pinned;
+          btn.style.color = !pinned ? '#ef4444' : '';
+          btn.title = !pinned ? '고정 해제' : '고정';
+        }
+
+        // ── Pagination (확장용 더미) ──
+        let page = 1;
+        function changePage(dir) {
+          page = Math.max(1, page + dir);
+          document.getElementById('page1').textContent = page;
+        }
+      </script>
+      <div class="card-grid" id="cardGrid">
+        <a class="card" href="textbooks/엔픽물리학.html" data-title="엔픽물리학" data-id="엔픽물리학">
+          <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+          <img class="card-thumb" src="https://image.yes24.com/goods/147983370/XL" alt="표지"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="card-thumb-placeholder" style="display:none;">📖</div>
+          <div class="card-body">
+            <div class="card-title">엔픽물리학</div>
+            <div class="card-sub">자동 생성</div>
+            <div class="card-badge">빠른정답</div>
+            <div class="card-id">ID 엔픽물리학</div>
+          </div>
+        </a>
+
+        <a class="card" href="textbooks/물리학.html" data-title="물리학" data-id="물리학">
+          <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+          <img class="card-thumb" src="https://file.megastudy.net/ebook/27623/27623/page/go1.jpg" alt="표지"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="card-thumb-placeholder" style="display:none;">📖</div>
+          <div class="card-body">
+            <div class="card-title">물리학</div>
+            <div class="card-sub">자동 생성</div>
+            <div class="card-badge">빠른정답</div>
+            <div class="card-id">ID 물리학</div>
+          </div>
+        </a>
+
+        <a class="card" href="textbooks/미적쎈.html" data-title="미적쎈" data-id="미적쎈">
+          <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+          <img class="card-thumb"
+            src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9788928349029.jpg?t=2974549" alt="표지"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="card-thumb-placeholder" style="display:none;">📖</div>
+          <div class="card-body">
+            <div class="card-title">미적쎈</div>
+            <div class="card-sub">자동 생성</div>
+            <div class="card-badge">빠른정답</div>
+            <div class="card-id">ID 미적쎈</div>
+          </div>
+        </a>
+        <a class="card" href="textbooks/자이스토리물리학.html" data-title="자이스토리물리학" data-id="자이스토리물리학">
+          <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+          <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9791162409381.jpg?t=2974940"
+            alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+          <div class="card-thumb-placeholder" style="display:none;">📖</div>
+          <div class="card-body">
+            <div class="card-title">자이스토리물리학</div>
+            <div class="card-sub">자동 생성</div>
+            <div class="card-badge">빠른정답</div>
+            <div class="card-id">ID 자이스토리물리학</div>
+          </div>
+        </a>
+      </div> <!-- end cardGrid -->
+    </div> <!-- end main -->
+
+  </body>
+</html>
