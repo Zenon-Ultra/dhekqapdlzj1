@@ -91,8 +91,12 @@ def admin_required(f):
     return decorated_function
 
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+BASE_DIR = os.path.dirname(__file__)
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+
+# Render 배포 시 필요한 폴더들을 자동 생성
+for _folder in ['uploads', 'static', 'img', 'textbooks']:
+    os.makedirs(os.path.join(BASE_DIR, _folder), exist_ok=True)
 
 # ==========================================
 # Frontend Routes
