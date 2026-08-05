@@ -253,6 +253,48 @@
     .btn-split:hover { background: #ffedd5; }
     .btn-split:disabled { opacity: 0.5; cursor: not-allowed; }
 
+    /* 🗑️ 이미지 삭제 버튼 */
+    .btn-delete-img {
+      width: 100%;
+      padding: 5px 0;
+      background: #fef2f2;
+      color: #dc2626;
+      border: none;
+      border-top: 1px solid #fca5a5;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+    .btn-delete-img:hover { background: #fee2e2; }
+
+    /* ⭐ 스크랩 버튼 */
+    .btn-scrap {
+      background: #fff;
+      border: 1.5px solid #f59e0b;
+      color: #b45309;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all .15s;
+    }
+    .btn-scrap.active {
+      background: #f59e0b;
+      color: #fff;
+      border-color: #f59e0b;
+    }
+
     /* 분할 진행 오버레이 */
     .split-overlay {
       position: fixed; inset: 0;
@@ -318,38 +360,127 @@
       pointer-events: none; z-index: 999;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ════════════════════════════════════════════
+       휴대폰 레이아웃
+    ════════════════════════════════════════════ */
+    @media (max-width: 700px) {
+      /* 헤더 컴팩트 */
+      header { padding: 0 12px; height: 52px; }
+      .header-title { font-size: 13px; }
+      .header-sub { display: none; }
+      .filter-tabs { gap: 4px; }
+      .filter-tab { padding: 4px 10px; font-size: 11px; }
+      .back-btn { font-size: 12px; padding: 4px 6px; }
+
+      /* 레이아웃: 사이드바를 하단 드로어로 전환 */
+      .layout { flex-direction: column; }
+      .main { padding: 12px; }
+
+      /* 모바일: 사이드바 하단 고정 */
+      .sidebar {
+        width: 100%;
+        border-right: none;
+        border-top: 1px solid var(--border);
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        z-index: 200;
+        flex-direction: row;
+        height: auto;
+        max-height: 65vh;
+        transform: translateY(calc(100% - 56px)); /* 좌시러만 보임 */
+        transition: transform .3s ease;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+      }
+      .sidebar.expanded {
+        transform: translateY(0);
+        overflow-y: auto;
+        flex-direction: column;
+      }
+      .sidebar-head {
+        padding: 10px 14px;
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .sidebar-head::before {
+        content: '';
+        display: block;
+        width: 36px; height: 4px;
+        background: #d1d5db;
+        border-radius: 2px;
+        margin: 0 auto 10px;
+      }
+      .sidebar-head .sidebar-title { margin-bottom: 0; font-size: 13px; }
+      .cart-list {
+        display: none;
+        padding: 6px 10px 80px;
+      }
+      .sidebar.expanded .cart-list { display: flex; }
+
+      /* 그리드: 2열 */
+      .problem-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding-bottom: 70px; /* 사이드바 곹치는 공간 */
+      }
+
+      /* 카드 이미지 높이 조절 */
+      .card-img { height: 130px; }
+
+      /* 터치에 적합한 비끼 크기 */
+      .btn-split, .btn-delete-img {
+        padding: 7px 0;
+        font-size: 11px;
+      }
+      .btn-scrap {
+        font-size: 10px;
+        padding: 3px 7px;
+      }
+
+      /* 모바일 PDF 버튼 */
+      .btn-pdf { font-size: 12px; padding: 10px; }
+      .btn-workbook { font-size: 11px; padding: 8px; }
+    }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="header-left">
-    <button class="back-btn" onclick="location.href='dashboard.html'">← 목록</button>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <button class="back-btn" onclick="location.href='/main'">
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+      목록으로
+    </button>
     <div>
-      <div class="header-title" id="bookTitle">로딩 중...</div>
-      <div class="header-sub">문제를 선택해 시험지를 만드세요</div>
+      <div class="header-title" id="bookTitle">교재 뷰어</div>
+      <div class="header-sub" id="bookSub">문제를 확인하고 스크랩하세요.</div>
     </div>
   </div>
-  <div class="filter-tabs">
-    <button class="filter-tab active" onclick="setFilter('all',this)">전체</button>
-    <button class="filter-tab"        onclick="setFilter('selected',this)">선택됨</button>
+  <div class="filter-tabs" id="filterTabs">
+    <div class="filter-tab active" onclick="if(typeof setFilter==='function')setFilter('all', this)">모든 문제</div>
+    <div class="filter-tab" onclick="if(typeof setFilter==='function')setFilter('unscraped', this)">미스크랩</div>
+    <div class="filter-tab" onclick="if(typeof setFilter==='function')setFilter('scraped', this)">스크랩 완료</div>
   </div>
 </header>
 
 <div class="layout">
-
   <!-- 사이드바 -->
-  <div class="sidebar">
-    <div class="sidebar-head">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-head" onclick="toggleSidebarMobile()">
       <div class="sidebar-title">
-        🛒 선택된 문제
+        🛝 선택된 문제
         <span class="count-badge" id="countBadge">0</span>
       </div>
-      <button class="btn-pdf" onclick="printExam()">🗈️ 시험지 PDF 만들기</button>
-      <button class="btn-workbook" id="workbookBtn" onclick="toggleWorkbookMode()">
+      <button class="btn-pdf" onclick="event.stopPropagation(); printExam()">🗈️ 시험지 PDF 만들기</button>
+      <button class="btn-workbook" id="workbookBtn" onclick="event.stopPropagation(); toggleWorkbookMode()">
         📝 오답노트 모드 <span class="workbook-badge">ON</span>
       </button>
-      <button class="btn-merge" id="mergeBtn" onclick="mergeProblem()" disabled>
+      <button class="btn-workbook" id="scrapBulkBtn" onclick="event.stopPropagation(); scrapSelectedProblems()" style="background:#fffbeb; color:#b45309; border-color:#f59e0b; margin-top:8px;">
+        ⭐ 선택 문제 일괄 스크랩
+      </button>
+      <button class="btn-merge" id="mergeBtn" onclick="event.stopPropagation(); mergeProblem()" disabled>
         🔗 선택한 문제 합치기
       </button>
     </div>
@@ -383,7 +514,7 @@
 // ══════════════════════════════════════════════
 const BOOK_FOLDER = '자이스토리물리학';
 const BOOK_TITLE = '자이스토리물리학';
-const BOOK_SUB   = '자동 생성';
+const BOOK_SUB   = '';
 
 const IMAGES = [
 { file: '../img/자이스토리물리학/001.png', page: 0 },
@@ -1129,9 +1260,42 @@ const IMAGES = [
 
 const selected = new Set();
 let filter = 'all';
+let userRole = 'user';
+const scrappedFiles = new Set();
 
 document.getElementById('bookTitle').textContent = BOOK_TITLE;
 document.getElementById('problemCount').textContent = `${IMAGES.length}개`;
+
+// ── 유저 권한 및 기존 스크랩 로드 ──
+async function initViewerUser() {
+  try {
+    const userRes = await fetch('/api/user_info');
+    const userData = await userRes.json();
+    if (userData.logged_in) {
+      userRole = userData.role || 'user';
+    }
+    
+    // 일반 유저인 경우 합치기 버튼 숨김
+    if (userRole !== 'admin') {
+      const mergeBtn = document.getElementById('mergeBtn');
+      if (mergeBtn) mergeBtn.style.display = 'none';
+    }
+
+    // 스크랩 데이터 로드
+    const folderName = BOOK_FOLDER || (IMAGES[0] ? IMAGES[0].file.split('/')[2] : '');
+    if (folderName) {
+      const scrapsRes = await fetch(`/api/scraps?book_folder=${encodeURIComponent(folderName)}`);
+      const scrapsData = await scrapsRes.json();
+      (scrapsData.scraps || []).forEach(s => {
+        const fname = s.image_file.split('/').pop();
+        scrappedFiles.add(fname);
+      });
+    }
+  } catch (e) {
+    console.error("뷰어 초기화 실패", e);
+  }
+  renderGrid();
+}
 
 function renderGrid() {
   const grid = document.getElementById('problemGrid');
@@ -1153,21 +1317,162 @@ function renderGrid() {
     const card = document.createElement('div');
     card.className = `problem-card${selected.has(i) ? ' selected' : ''}`;
     card.id = `card-${i}`;
-    card.onclick = (e) => { if (!e.target.closest('.btn-split')) toggle(i); };
+    card.onclick = (e) => { 
+      if (!e.target.closest('.btn-split') && !e.target.closest('.btn-delete-img') && !e.target.closest('.btn-scrap')) {
+        toggle(i); 
+      }
+    };
+
+    const fileNameOnly = file.split('/').pop();
+    const isScrapped = scrappedFiles.has(fileNameOnly);
+
+    let bottomControlsHtml = '';
+    if (userRole === 'admin') {
+      bottomControlsHtml = `
+        <button class="btn-split" id="splitBtn-${i}" onclick="event.stopPropagation(); splitProblem(${i})">✂️ 자르기</button>
+        <button class="btn-delete-img" onclick="event.stopPropagation(); deleteProblem(${i})">🗑️ 문제 삭제</button>
+      `;
+    }
+
     card.innerHTML = `
       <div class="card-header">
         <span class="card-page">No.${i + 1}</span>
-        <div class="card-check">${selected.has(i) ? '✓' : ''}</div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="btn-scrap ${isScrapped ? 'active' : ''}" onclick="event.stopPropagation(); toggleScrap(${i}, this)">
+            ${isScrapped ? '⭐ 스크랩됨' : '☆ 스크랩'}
+          </button>
+          <div class="card-check">${selected.has(i) ? '✓' : ''}</div>
+        </div>
       </div>
       <div class="card-img">
         <img src="${file}" alt="문제 ${i+1}"
           onerror="this.parentElement.innerHTML='<div style=padding:16px;text-align:center;color:#9ca3af;font-size:12px>이미지 없음</div>'" />
       </div>
-      <button class="btn-split" id="splitBtn-${i}" onclick="event.stopPropagation(); splitProblem(${i})">✂️ 자르기</button>
+      ${bottomControlsHtml}
     `;
     grid.appendChild(card);
   });
 }
+
+// ── 개별 스크랩 토글 ──
+async function toggleScrap(i, btn) {
+  const file = IMAGES[i].file;
+  const fileNameOnly = file.split('/').pop();
+  const folderName = BOOK_FOLDER || file.split('/')[2] || 'book';
+  const title = BOOK_TITLE || folderName;
+
+  const isScrapped = scrappedFiles.has(fileNameOnly);
+
+  if (isScrapped) {
+    // 스크랩 해제
+    try {
+      await fetch('/api/scraps', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book_folder: folderName, image_file: fileNameOnly })
+      });
+      scrappedFiles.delete(fileNameOnly);
+      btn.classList.remove('active');
+      btn.textContent = '☆ 스크랩';
+      showToast('스크랩이 해제되었습니다');
+    } catch (e) {
+      showToast('스크랩 해제 중 오류가 발생했습니다');
+    }
+  } else {
+    // 스크랩 추가
+    try {
+      await fetch('/api/scraps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          book_folder: folderName,
+          book_title: title,
+          items: [{ file: file, num: i + 1 }]
+        })
+      });
+      scrappedFiles.add(fileNameOnly);
+      btn.classList.add('active');
+      btn.textContent = '⭐ 스크랩됨';
+      showToast('⭐ 스크랩 보관함에 저장되었습니다');
+    } catch (e) {
+      showToast('스크랩 저장 중 오류가 발생했습니다');
+    }
+  }
+}
+
+// ── 선택 문제 일괄 스크랩 ──
+async function scrapSelectedProblems() {
+  if (!selected.size) {
+    showToast('스크랩할 문제를 먼저 선택해 주세요!');
+    return;
+  }
+
+  const folderName = BOOK_FOLDER || (IMAGES[0] ? IMAGES[0].file.split('/')[2] : 'book');
+  const title = BOOK_TITLE || folderName;
+
+  const items = [...selected].map(idx => ({
+    file: IMAGES[idx].file,
+    num: idx + 1
+  }));
+
+  try {
+    const res = await fetch('/api/scraps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        book_folder: folderName,
+        book_title: title,
+        items: items
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      items.forEach(it => {
+        scrappedFiles.add(it.file.split('/').pop());
+      });
+      renderGrid();
+      showToast(`⭐ 선택한 ${items.length}개 문제가 스크랩 보관함에 저장되었습니다!`);
+    } else {
+      showToast('스크랩 실패: ' + (data.error || '오류 발생'));
+    }
+  } catch (e) {
+    showToast('스크랩 저장 중 오류가 발생했습니다');
+  }
+}
+
+// ── 관리자 문제 사진 삭제 ──
+async function deleteProblem(i) {
+  const folder = BOOK_FOLDER;
+  if (!folder) {
+    alert('⚠️ BOOK_FOLDER 변수가 설정되지 않았습니다.');
+    return;
+  }
+  const num = i + 1;
+  const filename = IMAGES[i].file.split('/').pop();
+
+  const ok = confirm(`${num}번 문제 사진(${filename})을 삭제하시겠습니까?\n삭제 후 이후 문제 번호가 앞으로 당겨지며 되돌릴 수 없습니다.`);
+  if (!ok) return;
+
+  document.getElementById('splitOverlay').classList.add('open');
+  document.querySelector('.split-msg').textContent = '🗑️ 이미지 삭제 중...';
+
+  sessionStorage.setItem('splitScrollY', document.querySelector('.main').scrollTop);
+
+  try {
+    const delRes = await fetch(`/api/run/delete_sync?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`);
+    if (!delRes.ok) throw new Error(`삭제 오류: ${delRes.status}`);
+
+    const buildRes = await fetch(`/api/run/build_sync?folder=${encodeURIComponent(folder)}`);
+    if (!buildRes.ok) throw new Error(`에셋 생성 오류: ${buildRes.status}`);
+  } catch (e) {
+    document.getElementById('splitOverlay').classList.remove('open');
+    alert('오류: ' + e.message);
+    return;
+  }
+
+  location.reload();
+}
+
 
 function toggle(i) {
   if (selected.has(i)) {
@@ -1349,27 +1654,61 @@ async function printExam() {
     };
   }));
 
+  const savedTemplate = localStorage.getItem('examTemplate');
+  let T = null;
+  if (savedTemplate) {
+    try { T = JSON.parse(savedTemplate); } catch(e) {}
+  }
+  if (!T) {
+    T = {
+      paperSize:'A4', orientation:'portrait', margin:'normal', columns:2,
+      font:"'Malgun Gothic', sans-serif", bgColor:'#ffffff', bgImage:'',
+      showHeader:true, headerTitle:BOOK_TITLE, headerSubtitle:'', headerRight:'이름 : _________________',
+      logoData:'', logoHeight:36, headerLineColor:'#000000', headerLineWidth:'2px', titleSize:22,
+      numColor:'#000000', numSize:22, numStyle:'dot', problemGap:20, imgBgColor:'transparent', imgFit:'contain',
+      centerLineStyle:'dashed', centerLineColor:'#999999',
+      showFooter:false, footerLeft:'', footerCenter:'- 1 -', footerRight:''
+    };
+  }
+
+  const marginMm = {narrow:'8mm', normal:'12mm', wide:'18mm'}[T.margin] || '12mm';
+  const paperStr = T.paperSize + (T.orientation === 'landscape' ? ' landscape' : '');
+  const bgRule = T.bgImage ? `background-image: url('${T.bgImage}'); background-size: cover;` : `background: ${T.bgColor};`;
+  const paperWidth = T.orientation === 'landscape' ? '297mm' : '210mm';
+  const paperHeight = T.orientation === 'landscape' ? '210mm' : '297mm';
+
+  const getNum = (n, style) => {
+    const circles = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+    if (style==='paren') return n + ')';
+    if (style==='bracket') return '[' + n + ']';
+    if (style==='circle') return circles[n-1] || n + '.';
+    return n + '.';
+  };
+
   const css = `
-    @page { size: A4; margin: 0; }
+    @page { size: ${paperStr}; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Malgun Gothic', sans-serif; background: #525659; }
+    body { font-family: ${T.font}; background: #525659; }
     
     .page {
-      width: 210mm; height: 297mm; background: white;
-      margin: 20px auto; padding: 10mm 12mm; /* 시험지 외부 여백 */
+      width: ${paperWidth}; height: ${paperHeight}; ${bgRule}
+      margin: 20px auto; padding: ${marginMm};
       position: relative; page-break-after: always;
       display: flex; flex-direction: column;
     }
     @media print {
       body { background: white; }
-      .page { margin: 0; box-shadow: none; width: 210mm; height: 297mm; }
+      .page { margin: 0; box-shadow: none; width: ${paperWidth}; height: ${paperHeight}; }
     }
 
     .pg-header {
-      display: flex; justify-content: space-between; align-items: flex-end;
-      border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 15px;
+      display: ${T.showHeader ? 'flex' : 'none'}; justify-content: space-between; align-items: flex-end;
+      border-bottom: ${T.headerLineWidth} solid ${T.headerLineColor}; padding-bottom: 6px; margin-bottom: 15px;
     }
-    .pg-title { font-size: 24px; font-weight: 900; }
+    .pg-header-left { display: flex; align-items: center; gap: 8px; }
+    .pg-title { font-size: ${T.titleSize}px; font-weight: 900; }
+    .pg-subtitle { font-size: 12px; color: #555; }
+    .pg-logo { height: ${T.logoHeight}px; display: ${T.logoData ? 'block' : 'none'}; }
 
     /* 2단 구성 컨테이너 */
     .exam-body {
@@ -1383,7 +1722,8 @@ async function printExam() {
     .exam-body::after {
       content: ''; position: absolute;
       top: 0; bottom: 0; left: 50%;
-      border-left: 2px dashed #999; transform: translateX(-50%);
+      display: ${T.columns === 2 && T.centerLineStyle !== 'none' ? 'block' : 'none'};
+      border-left: 2px ${T.centerLineStyle} ${T.centerLineColor}; transform: translateX(-50%);
     }
 
     /* 왼쪽/오른쪽 단 (Column) */
@@ -1391,8 +1731,8 @@ async function printExam() {
       flex: 1; 
       display: grid;
       grid-template-rows: 1fr 1fr; /* 각 단은 2개의 슬롯을 가짐 */
-      gap: 20px; /* 문제 위아래 간격 */
-      width: 50%; /* 반반씩 차지 */
+      gap: ${T.problemGap}px; /* 문제 위아래 간격 */
+      width: ${T.columns === 1 ? '100%' : '50%'};
     }
 
     /* 개별 문제 영역 */
@@ -1408,8 +1748,8 @@ async function printExam() {
 
     /* 문제 번호 */
     .item-num {
-      font-size: 22px; font-weight: 900;
-      color: #000; margin-bottom: 6px;
+      font-size: ${T.numSize}px; font-weight: 900;
+      color: ${T.numColor}; margin-bottom: 6px;
       display: inline-block;
     }
 
@@ -1419,13 +1759,19 @@ async function printExam() {
       justify-content: flex-start; /* 왼쪽 정렬 */
       align-items: flex-start; /* 상단 정렬 (위에서 아래로 흐르게) */
       width: 100%; height: 100%;
+      background: ${T.imgBgColor};
     }
 
     .img-wrapper img {
       width: 100%; 
       max-height: 100%; 
-      object-fit: contain; 
+      object-fit: ${T.imgFit}; 
       object-position: left top; /* 무조건 왼쪽 위부터 채움 */
+    }
+    
+    .pg-footer {
+      display: ${T.showFooter ? 'flex' : 'none'}; justify-content: space-between; align-items: center;
+      border-top: 1px solid #bbb; padding-top: 4px; margin-top: 15px; font-size: 10px; color: #888;
     }
   `;
 
@@ -1433,18 +1779,25 @@ async function printExam() {
   let i = 0;
 
   // 전체 문제 순회
+  let pageNum = 1;
   while (i < items.length) {
     let pageHtml = `
       <div class="page">
         <div class="pg-header">
-          <div class="pg-title">📚 ${BOOK_TITLE}</div>
-          <div style="font-size:16px; font-weight:bold;">이름 : _________________</div>
+          <div class="pg-header-left">
+            <img class="pg-logo" src="${T.logoData}" />
+            <div>
+              <div class="pg-title">${T.headerTitle === '📚 시험지 제목' ? BOOK_TITLE : T.headerTitle}</div>
+              <div class="pg-subtitle">${T.headerSubtitle}</div>
+            </div>
+          </div>
+          <div style="font-size:16px; font-weight:bold;">${T.headerRight}</div>
         </div>
         <div class="exam-body">
     `;
 
-    // 한 페이지는 'left', 'right' 두 개의 단으로 구성
-    const columns = ['left', 'right'];
+    // 한 페이지는 'left', 'right' 두 개의 단으로 구성 (T.columns === 1이면 left만)
+    const columns = T.columns === 1 ? ['left'] : ['left', 'right'];
     for (let col of columns) {
       let colHtml = `<div class="column">`;
       let slotsUsed = 0; // 한 단(Column)당 최대 2슬롯
@@ -1461,7 +1814,7 @@ async function printExam() {
 
         colHtml += `
           <div class="item ${item.isLong ? 'long' : ''}">
-            <div class="item-num">${item.n}.</div>
+            <div class="item-num">${getNum(item.n, T.numStyle)}</div>
             <div class="img-wrapper"><img src="${item.file}"/></div>
           </div>
         `;
@@ -1474,9 +1827,17 @@ async function printExam() {
       colHtml += `</div>`;
       pageHtml += colHtml;
     }
-
-    pageHtml += `</div></div>`;
+    
+    const footerCenter = T.footerCenter === '- 1 -' ? `- ${pageNum} -` : T.footerCenter;
+    pageHtml += `</div>
+      <div class="pg-footer">
+        <span>${T.footerLeft}</span>
+        <span style="font-weight:bold; color:#444;">${footerCenter}</span>
+        <span>${T.footerRight}</span>
+      </div>
+    </div>`;
     body += pageHtml;
+    pageNum++;
   }
 
   const win = window.open('', '_blank');
@@ -1497,17 +1858,48 @@ async function printExamWorkbook() {
     return { n: n + 1, file: imgData.file, num: idx + 1 };
   }));
 
+  const savedTemplate = localStorage.getItem('workbookTemplate');
+  let T = null;
+  if (savedTemplate) {
+    try { T = JSON.parse(savedTemplate); } catch(e) {}
+  }
+  if (!T) {
+    T = {
+      paperSize:'A4', orientation:'portrait', margin:'normal', columns:1,
+      font:"'Malgun Gothic', sans-serif", bgColor:'#ffffff', bgImage:'',
+      showHeader:true, headerTitle:BOOK_TITLE, headerSubtitle:'', headerRight:'이름 : _________________',
+      logoData:'', logoHeight:36, headerLineColor:'#1a1d2e', headerLineWidth:'2.5px', titleSize:15,
+      numColor:'#1a1d2e', numSize:22, numStyle:'dot', problemGap:20, imgBgColor:'transparent', imgFit:'contain',
+      centerLineStyle:'dashed', centerLineColor:'#999999',
+      showFooter:false, footerLeft:'', footerCenter:'- 1 -', footerRight:'',
+      wbRightTitle: '📝 문제 풀이 및 정답', wbLabelText: '필수개념정리', wbLabelColor: '#d1d5db'
+    };
+  }
+
+  const marginMm = {narrow:'8mm', normal:'10mm', wide:'14mm'}[T.margin] || '10mm';
+  const paperStr = T.paperSize + (T.orientation === 'landscape' ? ' landscape' : '');
+  const bgRule = T.bgImage ? `background-image: url('${T.bgImage}'); background-size: cover;` : `background: ${T.bgColor};`;
+  const paperWidth = T.orientation === 'landscape' ? '297mm' : '210mm';
+  const paperHeight = T.orientation === 'landscape' ? '210mm' : '297mm';
+
+  const getNum = (n, style) => {
+    const circles = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+    if (style==='paren') return n + ')';
+    if (style==='bracket') return '[' + n + ']';
+    if (style==='circle') return circles[n-1] || n + '.';
+    return n + '.';
+  };
+
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
-    @page { size: A4 portrait; margin: 0; }
+    @page { size: ${paperStr}; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; background: #525659; }
+    body { font-family: ${T.font}; background: #525659; }
 
     .page {
-      width: 210mm; height: 297mm;
-      background: white;
+      width: ${paperWidth}; height: ${paperHeight}; ${bgRule}
       margin: 20px auto;
-      padding: 8mm 10mm 6mm 10mm;
+      padding: ${marginMm};
       position: relative;
       display: flex;
       flex-direction: column;
@@ -1516,26 +1908,26 @@ async function printExamWorkbook() {
     }
     @media print {
       body { background: white; }
-      .page { margin: 0; box-shadow: none; }
+      .page { margin: 0; box-shadow: none; width: ${paperWidth}; height: ${paperHeight}; }
     }
 
     /* 헤더 */
     .pg-header {
-      display: flex;
+      display: ${T.showHeader ? 'flex' : 'none'};
       justify-content: space-between;
       align-items: center;
-      border-bottom: 2.5px solid #1a1d2e;
+      border-bottom: ${T.headerLineWidth} solid ${T.headerLineColor};
       padding-bottom: 5px;
       margin-bottom: 6px;
       flex-shrink: 0;
     }
-    .pg-header-left { line-height: 1.3; }
-    .pg-book-name { font-size: 15px; font-weight: 900; color: #1a1d2e; }
+    .pg-header-left { line-height: 1.3; display: flex; align-items: center; gap: 8px; }
+    .pg-logo { height: ${T.logoHeight}px; display: ${T.logoData ? 'block' : 'none'}; }
+    .pg-book-name { font-size: ${T.titleSize}px; font-weight: 900; color: #1a1d2e; }
     .pg-page-range { font-size: 10px; color: #6b7280; margin-top: 1px; }
     .pg-qr {
-      width: 42px; height: 42px; border: 1px solid #e5e7eb;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px; border-radius: 4px; color: #9ca3af;
+      font-size: 16px; font-weight: bold;
+      color: #000; display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
 
@@ -1582,9 +1974,9 @@ async function printExamWorkbook() {
       margin-bottom: 5px;
     }
     .q-num {
-      font-size: 22px;
+      font-size: ${T.numSize}px;
       font-weight: 900;
-      color: #1a1d2e;
+      color: ${T.numColor};
       line-height: 1;
     }
     .q-badge {
@@ -1599,11 +1991,12 @@ async function printExamWorkbook() {
       align-items: flex-start;
       justify-content: flex-start;
       overflow: hidden;
+      background: ${T.imgBgColor};
     }
     .q-img-area img {
       max-width: 100%;
       max-height: 100%;
-      object-fit: contain;
+      object-fit: ${T.imgFit};
       object-position: left top;
     }
 
@@ -1632,8 +2025,8 @@ async function printExamWorkbook() {
       writing-mode: vertical-rl;
       text-orientation: mixed;
       transform: rotate(180deg);
-      font-size: 8.5px; font-weight: 700;
-      color: #d1d5db; letter-spacing: 2px;
+      font-size: 9.5px; font-weight: 700;
+      color: ${T.wbLabelColor}; letter-spacing: 2px;
       position: absolute;
       left: 0; top: 0; bottom: 0;
       display: flex;
@@ -1643,7 +2036,7 @@ async function printExamWorkbook() {
 
     /* 푸터 */
     .pg-footer {
-      display: flex;
+      display: ${T.showFooter ? 'flex' : 'none'};
       justify-content: space-between;
       align-items: center;
       border-top: 1px solid #d1d5db;
@@ -1666,9 +2059,9 @@ async function printExamWorkbook() {
     const makeQBlock = (q) => `
       <div class="q-block">
         <div class="q-left">
-          <div class="q-source">${BOOK_TITLE} | ${BOOK_SUB}</div>
+          <div class="q-source">${T.headerTitle === '📚 시험지 제목' ? BOOK_TITLE : T.headerTitle} ${T.headerSubtitle ? '| ' + T.headerSubtitle : '| ' + BOOK_SUB}</div>
           <div class="q-numline">
-            <span class="q-num">${q.n}</span>
+            <span class="q-num">${getNum(q.n, T.numStyle)}</span>
             <span class="q-badge">오답노트</span>
           </div>
           <div class="q-img-area">
@@ -1676,22 +2069,26 @@ async function printExamWorkbook() {
           </div>
         </div>
         <div class="q-right">
-          <div class="q-right-title">📝 문제 풀이 및 정답</div>
+          <div class="q-right-title">${T.wbRightTitle}</div>
           <div class="q-right-content">
-            <div class="q-concept-label">필수개념정리</div>
+            <div class="q-concept-label">${T.wbLabelText}</div>
           </div>
         </div>
       </div>
     `;
 
+    const footerCenter = T.footerCenter === '- 1 -' ? `- ${pageNum} -` : T.footerCenter;
     body += `
       <div class="page">
         <div class="pg-header">
           <div class="pg-header-left">
-            <div class="pg-book-name">${BOOK_TITLE}</div>
-            <div class="pg-page-range">${pageRange}</div>
+            <img class="pg-logo" src="${T.logoData}" />
+            <div>
+              <div class="pg-book-name">${T.headerTitle === '📚 시험지 제목' ? BOOK_TITLE : T.headerTitle}</div>
+              <div class="pg-page-range">${pageRange}</div>
+            </div>
           </div>
-          <div class="pg-qr">🔷</div>
+          <div class="pg-qr">${T.headerRight}</div>
         </div>
 
         <div class="pg-body">
@@ -1701,9 +2098,9 @@ async function printExamWorkbook() {
         </div>
 
         <div class="pg-footer">
-          <span>${BOOK_SUB}</span>
-          <span class="pg-footer-center">- ${pageNum} -</span>
-          <span>학습번호 _______</span>
+          <span>${T.footerLeft}</span>
+          <span class="pg-footer-center">${footerCenter}</span>
+          <span>${T.footerRight}</span>
         </div>
       </div>
     `;
@@ -1725,8 +2122,15 @@ function showToast(msg) {
   _tt = setTimeout(() => t.classList.remove('show'), 1700);
 }
 
-// 바로 렌더 (비율 측정 불필요)
-renderGrid();
+// 모바일: 사이드바 드로어 토글
+function toggleSidebarMobile() {
+  if (window.innerWidth > 700) return; // 데스크탑은 안동작
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('expanded');
+}
+
+// 초기화 및 렌더링
+initViewerUser();
 </script>
 
 <!-- 분할 진행 오버레이 -->

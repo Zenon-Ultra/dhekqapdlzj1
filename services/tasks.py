@@ -478,3 +478,67 @@ def merge_images_task(selected_folder, start_num_or_files, end_num=None):
             os.remove(tmp)
         yield yield_msg(f"🚨 오류 발생: {e}", 100)
 
+# ==========================================
+# 6. 이미지 삭제 및 번호 당기기
+# ==========================================
+def delete_image_task(selected_folder, target_num_or_file):
+    yield yield_msg("⚙️ 이미지 삭제 시작...", 5)
+    base_dir = "img"
+    img_dir = os.path.join(base_dir, selected_folder)
+    if not os.path.exists(img_dir):
+        yield yield_msg(f"🚨 폴더를 찾을 수 없습니다: {selected_folder}", 100)
+        return
+
+    import re
+    if isinstance(target_num_or_file, str) and '.' in str(target_num_or_file):
+        filename = target_num_or_file
+        match = re.search(r'(\d+)', filename)
+        if not match:
+            yield yield_msg(f"🚨 파일명에서 번호를 찾을 수 없습니다: {filename}", 100)
+            return
+        target_num = int(match.group(1))
+        img_path = os.path.join(img_dir, filename)
+    else:
+        try:
+            target_num = int(target_num_or_file)
+        except ValueError:
+            yield yield_msg("🚨 숫자 형식이 잘못되었습니다.", 100)
+            return
+        existing_files = [f for f in os.listdir(img_dir) if f.startswith(f"{target_num:03d}.")]
+        if not existing_files:
+            yield yield_msg(f"🚨 {target_num:03d} 번호로 시작하는 파일을 찾을 수 없습니다.", 100)
+            return
+        img_path = os.path.join(img_dir, existing_files[0])
+
+    if not os.path.exists(img_path):
+        yield yield_msg(f"🚨 파일을 찾을 수 없습니다: {img_path}", 100)
+        return
+
+    try:
+        os.remove(img_path)
+        yield yield_msg(f"🗑️ {os.path.basename(img_path)} 이미지 삭제 완료, 이후 파일 번호 당기기...", 40)
+
+        valid_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+        all_files_info = []
+        for f in os.listdir(img_dir):
+            if f.startswith("__"): continue
+            name_part, file_ext = os.path.splitext(f)
+            if file_ext.lower() in valid_exts and name_part.isdigit():
+                all_files_info.append((int(name_part), file_ext, f))
+
+        all_files_info.sort(key=lambda x: x[0])
+
+        for n, file_ext, f in all_files_info:
+            if n > target_num:
+                old_path = os.path.join(img_dir, f)
+                new_path = os.path.join(img_dir, f"{n-1:03d}{file_ext}")
+                os.rename(old_path, new_path)
+
+        yield yield_msg("⏳ 교재 에셋 자동 갱신 중...", 80)
+        list(generate_assets_task([selected_folder]))
+
+        yield yield_msg(f"🎉 성공적으로 삭제되었습니다! ({target_num:03d}번 삭제, 이후 번호 -1 당겨짐 & 교재 에셋 갱신 완료)", 100)
+    except Exception as e:
+        yield yield_msg(f"🚨 오류 발생: {e}", 100)
+
+

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>시스템 관리자 대시보드</title>
+    <title>시스템 관리자 대시보드 - HYPERX</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -82,6 +82,29 @@
         .console .success { color: #4ade80; }
         .console .error { color: #f87171; }
         .console .warn { color: #fbbf24; }
+
+        /* Gallery Item */
+        .gallery-item {
+            background: #fff; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+            display: flex; flex-direction: column; align-items: center; padding: 6px; position: relative;
+        }
+        .gallery-item img { width: 100%; height: 100px; object-fit: contain; background: #f1f5f9; border-radius: 4px; }
+        .gallery-item-title { font-size: 11px; font-weight: 600; color: #374151; margin: 4px 0; text-align: center; }
+        .gallery-item-del { width: 100%; background: #ef4444; color: #fff; border: none; padding: 4px 0; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; }
+        .gallery-item-del:hover { background: #dc2626; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; overflow: auto; }
+            .sidebar { width: 100%; height: auto; }
+            .nav { flex-direction: row; flex-wrap: wrap; padding: 10px; gap: 4px; }
+            .nav-item { padding: 8px 12px; font-size: 13px; border-left: none !important; border-radius: 6px; }
+            .nav-item.active { background: #3b82f6; }
+            .nav-item.logout, .nav-item.back-home { border-top: none; }
+            .main { padding: 20px; }
+            .card { padding: 20px; }
+            .modal { width: 90%; margin: 20px; }
+            .form-group[style*="display:flex"] { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -94,8 +117,9 @@
         <div class="nav-item" onclick="switchTab('tab-build', this)">🏗️ 교재 에셋 생성</div>
         <div class="nav-item" onclick="switchTab('tab-split', this)">🔪 이미지 분할</div>
         <div class="nav-item" onclick="switchTab('tab-merge', this)">🔗 이미지 합치기</div>
+        <div class="nav-item" onclick="switchTab('tab-delete', this)">🗑️ 문제 사진 삭제</div>
         <div class="nav-item logout" onclick="location.href='/logout'">🚪 로그아웃</div>
-        <div class="nav-item back-home" onclick="location.href='/main'">← 메인 페이지로 돌아가기</div>
+        <div class="nav-item back-home" onclick="location.href='/main'">← 메인 대시보드로 돌아가기</div>
     </div>
 </div>
 
@@ -135,7 +159,7 @@
     <div id="tab-trim" class="section">
         <div class="card">
             <div class="form-group">
-                <label>대상 교재 선택 (다중 선택은 추후 지원)</label>
+                <label>대상 교재 선택</label>
                 <select id="trimFolderSelect"></select>
             </div>
             <button class="btn" onclick="runTrim()">여백 정리 시작</button>
@@ -193,6 +217,29 @@
             <button class="btn" onclick="runMerge()">이미지 합치기</button>
         </div>
     </div>
+
+    <!-- 6. 이미지 삭제 탭 -->
+    <div id="tab-delete" class="section">
+        <div class="card" style="max-width: 750px;">
+            <div class="form-group">
+                <label>대상 교재 선택</label>
+                <select id="deleteFolderSelect" onchange="loadDeleteFolderGallery()"></select>
+            </div>
+            <div class="form-group" style="display:flex; gap:12px; align-items:flex-end;">
+                <div style="flex:1;">
+                    <label>삭제할 이미지 번호 또는 파일명</label>
+                    <input type="text" id="deleteTargetInput" placeholder="예: 5 또는 005.png">
+                </div>
+                <button class="btn" style="width: auto; padding: 12px 24px; background:#ef4444;" onclick="runDeleteTarget()">🗑️ 이미지 삭제</button>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin:-8px 0 16px;">⚠️ 선택한 문제 이미지를 삭제하고 이후 문항 번호들을 앞으로 당깁니다. (교재 에셋 자동 갱신)</p>
+
+            <label style="margin-top:20px; display:block;">교재 문제 이미지 갤러리 (클릭하여 개별 삭제)</label>
+            <div id="deleteGalleryGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; max-height:380px; overflow-y:auto; padding:10px; background:#f8fafc; border:1px solid var(--border); border-radius:8px;">
+                <!-- 갤러리 렌더링 영역 -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Modal -->
@@ -228,12 +275,14 @@
             'tab-trim': ['✂️ 여백 일괄 정리', '추출된 문제 이미지들의 잉여 여백을 분석하여 깨끗하게 잘라냅니다.'],
             'tab-build': ['🏗️ 교재 에셋 생성', '이미지 폴더를 기반으로 뷰어 HTML 및 메타데이터를 자동 생성합니다.'],
             'tab-split': ['🔪 이미지 분할', '두 문제가 붙어있는 이미지를 반으로 가르고, 이후 번호들을 자동으로 밀어냅니다.'],
-            'tab-merge': ['🔗 이미지 합치기', '연속된 이미지들을 하나로 이어 붙이고, 이후 번호를 앞으로 당깁니다.']
+            'tab-merge': ['🔗 이미지 합치기', '연속된 이미지들을 하나로 이어 붙이고, 이후 번호를 앞으로 당깁니다.'],
+            'tab-delete': ['🗑️ 문제 사진 삭제', '교재 내 특정 문제 사진을 선택하여 삭제하고 이후 번호들을 당깁니다.']
         };
         document.getElementById('mainTitle').textContent = titles[id][0];
         document.getElementById('mainSubtitle').textContent = titles[id][1];
         
         if(id !== 'tab-extract') fetchFolders();
+        if(id === 'tab-delete') setTimeout(loadDeleteFolderGallery, 100);
     }
 
     // 폴더 목록 가져오기
@@ -246,8 +295,57 @@
             document.getElementById('buildFolderSelect').innerHTML = options;
             document.getElementById('splitFolderSelect').innerHTML = options;
             document.getElementById('mergeFolderSelect').innerHTML = options;
+            document.getElementById('deleteFolderSelect').innerHTML = options;
         } catch(e) {
             console.error("폴더 로딩 실패", e);
+        }
+    }
+
+    // 삭제 탭 갤러리 로드
+    async function loadDeleteFolderGallery() {
+        const folder = document.getElementById('deleteFolderSelect').value;
+        const grid = document.getElementById('deleteGalleryGrid');
+        if (!folder) {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">교재를 선택해주세요.</div>';
+            return;
+        }
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">이미지 불러오는 중...</div>';
+        try {
+            const res = await fetch(`/api/folder_images?folder=${encodeURIComponent(folder)}`);
+            const data = await res.json();
+            const images = data.images || [];
+            if (!images.length) {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">폴더에 이미지가 없습니다.</div>';
+                return;
+            }
+            grid.innerHTML = '';
+            images.forEach(imgFile => {
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                item.innerHTML = `
+                    <img src="/img/${folder}/${imgFile}" alt="${imgFile}" onerror="this.src='/img/placeholder.png'">
+                    <div class="gallery-item-title">${imgFile}</div>
+                    <button class="gallery-item-del" onclick="confirmDeleteFile('${folder}', '${imgFile}')">🗑️ 삭제</button>
+                `;
+                grid.appendChild(item);
+            });
+        } catch(e) {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#ef4444;">이미지 로딩 오류</div>';
+        }
+    }
+
+    function confirmDeleteFile(folder, filename) {
+        if (confirm(`${filename} 이미지를 삭제하시겠습니까?\n삭제 후 이후 문항 번호가 당겨집니다.`)) {
+            startTask(`/api/run/delete?folder=${encodeURIComponent(folder)}&target=${encodeURIComponent(filename)}`);
+        }
+    }
+
+    function runDeleteTarget() {
+        const folder = document.getElementById('deleteFolderSelect').value;
+        const target = document.getElementById('deleteTargetInput').value.trim();
+        if (!folder || !target) return alert('교재와 삭제할 번호/파일명 입력해주세요.');
+        if (confirm(`${target} 이미지를 삭제하시겠습니까?\n삭제 후 이후 문항 번호가 당겨집니다.`)) {
+            startTask(`/api/run/delete?folder=${encodeURIComponent(folder)}&target=${encodeURIComponent(target)}`);
         }
     }
 
@@ -292,7 +390,10 @@
             if (data.percent === 100 || data.msg.includes('🚨')) {
                 eventSource.close();
                 closeBtn.style.display = 'block';
-                if(data.percent === 100) fetchFolders(); // 작업 끝나면 폴더 리스트 갱신
+                if(data.percent === 100) {
+                    fetchFolders();
+                    loadDeleteFolderGallery();
+                }
             }
         };
         
@@ -329,7 +430,6 @@
         btn.disabled = true;
         btn.textContent = '업로드 중...';
 
-        // 1단계: 파일 업로드
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         formData.append('name', name);
@@ -344,7 +444,6 @@
         btn.textContent = '추출 시작하기';
         btn.disabled = false;
 
-        // 2단계: SSE 추출 실행
         startTask(`/api/run/extract?name=${encodeURIComponent(name)}&col=${col}&use_upload=1`);
     }
 

@@ -264,6 +264,18 @@
         transform: translateY(0px);
       }
     }
+    @media (max-width: 768px) {
+      h1 { font-size: 40px; }
+      nav { padding: 16px 20px; }
+      .nav-links a { margin-left: 16px; font-size: 14px; }
+      .actions { flex-direction: column; width: 100%; gap: 12px; }
+      .btn { width: 100%; text-align: center; }
+      .f-card { display: none; }
+      p.subtitle { font-size: 16px; padding: 0 10px; margin-bottom: 32px; }
+      .bg-glow { width: 300px; height: 300px; top: -100px; left: -100px; }
+      .bg-glow-2 { width: 400px; height: 400px; bottom: -150px; right: -150px; }
+      .badge { margin-bottom: 16px; font-size: 12px; }
+    }
   </style>
 </head>
 
@@ -291,6 +303,7 @@
   <nav>
     <div class="logo">HYPERX</div>
     <div class="nav-links">
+      <a href="/signup" style="color:#38bdf8;">회원가입</a>
       <a href="/login">로그인</a>
     </div>
   </nav>
