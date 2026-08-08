@@ -118,6 +118,7 @@
         <div class="nav-item" onclick="switchTab('tab-split', this)">🔪 이미지 분할</div>
         <div class="nav-item" onclick="switchTab('tab-merge', this)">🔗 이미지 합치기</div>
         <div class="nav-item" onclick="switchTab('tab-delete', this)">🗑️ 문제 사진 삭제</div>
+        <div class="nav-item" onclick="switchTab('tab-requests', this)">📥 교재 요청 관리</div>
         <div class="nav-item logout" onclick="location.href='/logout'">🚪 로그아웃</div>
         <div class="nav-item back-home" onclick="location.href='/main'">← 메인 대시보드로 돌아가기</div>
     </div>
@@ -240,6 +241,26 @@
             </div>
         </div>
     </div>
+
+    <!-- 7. 교재 요청 관리 탭 -->
+    <div id="tab-requests" class="section">
+        <div class="card" style="max-width: 800px; width: 100%;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border);">
+                        <th style="padding: 12px 8px;">상태</th>
+                        <th style="padding: 12px 8px;">요청자</th>
+                        <th style="padding: 12px 8px;">교재명</th>
+                        <th style="padding: 12px 8px;">요청일</th>
+                        <th style="padding: 12px 8px;">관리</th>
+                    </tr>
+                </thead>
+                <tbody id="requestsTableBody">
+                    <!-- 렌더링 영역 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <!-- Modal -->
@@ -276,13 +297,15 @@
             'tab-build': ['🏗️ 교재 에셋 생성', '이미지 폴더를 기반으로 뷰어 HTML 및 메타데이터를 자동 생성합니다.'],
             'tab-split': ['🔪 이미지 분할', '두 문제가 붙어있는 이미지를 반으로 가르고, 이후 번호들을 자동으로 밀어냅니다.'],
             'tab-merge': ['🔗 이미지 합치기', '연속된 이미지들을 하나로 이어 붙이고, 이후 번호를 앞으로 당깁니다.'],
-            'tab-delete': ['🗑️ 문제 사진 삭제', '교재 내 특정 문제 사진을 선택하여 삭제하고 이후 번호들을 당깁니다.']
+            'tab-delete': ['🗑️ 문제 사진 삭제', '교재 내 특정 문제 사진을 선택하여 삭제하고 이후 번호들을 당깁니다.'],
+            'tab-requests': ['📥 교재 요청 관리', '사용자들이 추가를 요청한 교재 목록을 확인하고 관리합니다.']
         };
         document.getElementById('mainTitle').textContent = titles[id][0];
         document.getElementById('mainSubtitle').textContent = titles[id][1];
         
-        if(id !== 'tab-extract') fetchFolders();
+        if(id !== 'tab-extract' && id !== 'tab-requests') fetchFolders();
         if(id === 'tab-delete') setTimeout(loadDeleteFolderGallery, 100);
+        if(id === 'tab-requests') loadRequests();
     }
 
     // 폴더 목록 가져오기
@@ -484,7 +507,66 @@
         startTask(`/api/run/merge?folder=${encodeURIComponent(folder)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     }
 
-    window.onload = fetchFolders;
+    // ── 교재 요청 관리 ──
+    async function loadRequests() {
+        try {
+            const res = await fetch('/api/admin/book_requests');
+            const data = await res.json();
+            const tbody = document.getElementById('requestsTableBody');
+            tbody.innerHTML = '';
+            if (data.requests && data.requests.length > 0) {
+                data.requests.forEach(req => {
+                    const statusBadge = req.status === 'pending' 
+                        ? '<span style="background:#fef3c7;color:#d97706;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">대기중</span>' 
+                        : '<span style="background:#d1fae5;color:#059669;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">완료</span>';
+                    
+                    const actions = req.status === 'pending'
+                        ? `<button class="btn" style="padding:6px 12px; font-size:12px; margin-right:4px;" onclick="completeRequest(${req.id})">완료 처리</button>`
+                        : '';
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = '1px solid var(--border)';
+                    tr.innerHTML = `
+                        <td style="padding: 12px 8px;">${statusBadge}</td>
+                        <td style="padding: 12px 8px; font-weight:500;">${req.username}</td>
+                        <td style="padding: 12px 8px;">${req.book_name}</td>
+                        <td style="padding: 12px 8px; color:var(--text-muted); font-size:13px;">${req.created_at}</td>
+                        <td style="padding: 12px 8px;">
+                            ${actions}
+                            <button class="btn" style="padding:6px 12px; font-size:12px; background:#ef4444;" onclick="deleteRequest(${req.id})">삭제</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color:var(--text-muted);">요청된 교재가 없습니다.</td></tr>';
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async function completeRequest(id) {
+        if (!confirm('이 교재 요청을 완료 처리하시겠습니까? (사용자의 대기중 표시가 사라집니다)')) return;
+        try {
+            await fetch('/api/admin/book_requests/' + id + '/complete', { method: 'POST' });
+            loadRequests();
+        } catch (e) { console.error(e); }
+    }
+
+    async function deleteRequest(id) {
+        if (!confirm('이 교재 요청을 삭제하시겠습니까?')) return;
+        try {
+            await fetch('/api/admin/book_requests/' + id, { method: 'DELETE' });
+            loadRequests();
+        } catch (e) { console.error(e); }
+    }
+
+    window.onload = function() {
+        fetchFolders();
+        if (document.getElementById('tab-requests').classList.contains('active')) {
+            loadRequests();
+        }
+    };
 </script>
 </body>
 </html>

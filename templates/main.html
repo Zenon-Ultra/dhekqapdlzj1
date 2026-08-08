@@ -609,6 +609,10 @@
           style="border-color: #6366f1; color: #4338ca; background: #e0e7ff; display:none;">
           🛠️ 관리자
         </button>
+        <button class="btn btn-outline" id="syncBtn" onclick="syncBooks()"
+          style="border-color: #10b981; color: #059669; background: #d1fae5; display:none;">
+          📦 교재 동기화
+        </button>
         <button class="btn btn-outline" onclick="location.href='template_editor.html'"
           style="border-color: #93c5fd; color: #1d4ed8;">
           ⚙️ 템플릿
@@ -633,6 +637,10 @@
       <button class="btn btn-outline" id="mobileAdminBtn" onclick="location.href='/admin'"
         style="border-color:#6366f1; color:#4338ca; background:#e0e7ff; display:none;">
         🛠️ 관리자 대시보드
+      </button>
+      <button class="btn btn-outline" id="mobileSyncBtn" onclick="syncBooks()"
+        style="border-color:#10b981; color:#059669; background:#d1fae5; display:none;">
+        📦 교재 동기화
       </button>
       <button class="btn btn-outline" onclick="location.href='template_editor.html'"
         style="border-color:#93c5fd; color:#1d4ed8;">
@@ -670,61 +678,44 @@
           <p>검색 결과가 없습니다.</p>
         </div>
 
-        <div class="card-grid" id="cardGrid">
-          <a class="card" href="textbooks/엔픽물리학.html" data-title="엔픽물리학" data-id="엔픽물리학">
-            <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-            <img class="card-thumb" src="https://image.yes24.com/goods/147983370/XL" alt="표지"
-              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-            <div class="card-thumb-placeholder" style="display:none;">📖</div>
-            <div class="card-body">
-              <div class="card-title">엔픽물리학</div>
-              <div class="card-sub">자동 생성</div>
-              <div class="card-badge">빠른정답</div>
-              <div class="card-id">ID 엔픽물리학</div>
-            </div>
-          </a>
-
-          <a class="card" href="textbooks/물리학.html" data-title="물리학" data-id="물리학">
-            <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-            <img class="card-thumb" src="https://file.megastudy.net/ebook/27623/27623/page/go1.jpg" alt="표지"
-              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-            <div class="card-thumb-placeholder" style="display:none;">📖</div>
-            <div class="card-body">
-              <div class="card-title">물리학</div>
-              <div class="card-sub">자동 생성</div>
-              <div class="card-badge">빠른정답</div>
-              <div class="card-id">ID 물리학</div>
-            </div>
-          </a>
-
-          <a class="card" href="textbooks/미적쎈.html" data-title="미적쎈" data-id="미적쎈">
-            <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-            <img class="card-thumb"
-              src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9788928349029.jpg?t=2974549" alt="표지"
-              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-            <div class="card-thumb-placeholder" style="display:none;">📖</div>
-            <div class="card-body">
-              <div class="card-title">미적쎈</div>
-              <div class="card-sub">자동 생성</div>
-              <div class="card-badge">빠른정답</div>
-              <div class="card-id">ID 미적쎈</div>
-            </div>
-          </a>
-
-          <a class="card" href="textbooks/자이스토리물리학.html" data-title="자이스토리물리학" data-id="자이스토리물리학">
-            <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-            <img class="card-thumb"
-              src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9791162409381.jpg?t=2974940" alt="표지"
-              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-            <div class="card-thumb-placeholder" style="display:none;">📖</div>
-            <div class="card-body">
-              <div class="card-title">자이스토리물리학</div>
-              <div class="card-sub">자동 생성</div>
-              <div class="card-badge">빠른정답</div>
-              <div class="card-id">ID 자이스토리물리학</div>
-            </div>
-          </a>
+        <div class="empty" id="loadingState" style="display:none;">
+          <div class="empty-icon" style="animation: spin 1s linear infinite; display:inline-block;">⏳</div>
+          <p>교재 목록 불러오는 중...</p>
         </div>
+
+        <style>
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          /* 동기화 진행 토스트 */
+          #syncToast {
+            position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: #fff; padding: 14px 28px; border-radius: 14px;
+            font-size: 14px; font-weight: 600; z-index: 9999; display: none;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25); gap: 10px; align-items: center;
+            min-width: 260px; justify-content: center;
+          }
+          #syncToast.show { display: flex; animation: fadeInUp 0.3s ease; }
+          #syncToast.success { background: #059669; }
+          #syncToast.error { background: #dc2626; }
+          @keyframes fadeInUp { from { opacity:0; transform: translateX(-50%) translateY(16px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+
+          /* FAB Styles */
+          .fab-container { position: fixed; bottom: 30px; right: 30px; z-index: 1000; display: flex; flex-direction: column; align-items: flex-end; }
+          .fab-menu { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; transform: translateY(20px); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+          .fab-menu.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+          .fab-menu-item { background: white; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 20px; padding: 10px 20px; font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; white-space: nowrap; color: var(--text); }
+          .fab-menu-item:hover { background: var(--blue-light); color: var(--blue); }
+          .fab-btn { width: 56px; height: 56px; border-radius: 50%; background: var(--blue); color: white; font-size: 28px; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(26,110,245,0.4); display: flex; align-items: center; justify-content: center; transition: 0.3s; }
+          .fab-btn:hover { transform: scale(1.05); }
+          .fab-btn.open { transform: rotate(45deg); background: var(--blue-dark); }
+          
+          /* Pending Badge Styles */
+          .pending-badge { position: fixed; bottom: 30px; left: 30px; background: white; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 20px; padding: 8px 16px; display: flex; align-items: center; gap: 12px; z-index: 1000; animation: popIn 0.3s ease-out; }
+          .pending-badge span { font-size: 14px; font-weight: 600; color: #f59e0b; }
+          .pending-badge button { background: none; border: none; font-size: 13px; color: #dc2626; cursor: pointer; font-weight: 600; padding: 0; }
+          .pending-badge button:hover { text-decoration: underline; }
+        </style>
+
+        <div id="cardGrid" class="card-grid"></div>
       </div>
 
       <!-- 2. 스크랩 보관함 섹션 -->
@@ -760,10 +751,43 @@
       </div>
     </div>
 
+    <!-- 동기화 토스트 알림 -->
+    <div id="syncToast"></div>
+
+    <!-- 교재 추가 요청 FAB 및 메뉴 -->
+    <div class="fab-container" id="fabContainer">
+      <div class="fab-menu" id="fabMenu">
+        <button class="fab-menu-item" onclick="openBookRequestModal()">📖 교재 추가 요청하기</button>
+      </div>
+      <button class="fab-btn" onclick="toggleFabMenu()">+</button>
+    </div>
+
+    <!-- 대기중 상태 뱃지 -->
+    <div class="pending-badge" id="pendingRequestBadge" style="display:none;">
+      <span>교재 요청 대기중</span>
+      <button onclick="cancelBookRequest()">취소하기</button>
+    </div>
+
+    <!-- 교재 추가 요청 모달 -->
+    <div class="popup-overlay" id="bookRequestModal" style="display:none;">
+      <div class="popup-box">
+        <h2 class="popup-header">📖 교재 추가 요청</h2>
+        <div class="popup-content">
+          <input type="text" id="requestBookName" placeholder="요청할 교재명을 입력하세요" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none;">
+        </div>
+        <div class="popup-footer" style="justify-content: flex-end; gap: 10px;">
+          <button class="close-btn" style="background:#f4f6fb; color:#333; border: 1px solid var(--border);" onclick="closeBookRequestModal()">취소</button>
+          <button class="close-btn" style="background:var(--blue);" onclick="submitBookRequest()">요청하기</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       let currentUser = null;
       let allScraps = [];
       let selectedScrapIds = new Set();
+
+
 
       // ── 유저 정보 로드 ──
       async function loadUserInfo() {
@@ -783,6 +807,8 @@
             if (data.role === 'admin') {
               document.getElementById('adminBtn').style.display = 'inline-flex';
               document.getElementById('mobileAdminBtn').style.display = 'flex';
+              document.getElementById('syncBtn').style.display = 'inline-flex';
+              document.getElementById('mobileSyncBtn').style.display = 'flex';
             }
           }
         } catch (e) {
@@ -811,6 +837,85 @@
         }
       }
 
+      // ── 교재 목록 동적 로드 ──
+      async function loadBooks() {
+        const grid = document.getElementById('cardGrid');
+        const loadingState = document.getElementById('loadingState');
+        loadingState.style.display = 'block';
+        grid.innerHTML = '';
+        try {
+          const res = await fetch('/api/books');
+          const data = await res.json();
+          loadingState.style.display = 'none';
+          const books = data.books || [];
+          if (books.length === 0) {
+            document.getElementById('emptyState').style.display = 'block';
+            document.getElementById('emptyState').querySelector('p').textContent = '등록된 교재가 없습니다.';
+            return;
+          }
+          books.forEach(book => {
+            const card = document.createElement('a');
+            card.className = 'card';
+            card.href = book.html;
+            card.dataset.title = book.name;
+            card.dataset.id = book.name;
+            card.innerHTML = `
+              <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+              ${book.cover_url
+                ? `<img class="card-thumb" src="${book.cover_url}" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />`
+                : ''
+              }
+              <div class="card-thumb-placeholder" style="display:${book.cover_url ? 'none' : 'flex'};">📖</div>
+              <div class="card-body">
+                <div class="card-title">${book.name}</div>
+                <div class="card-sub">자동 생성</div>
+                <div class="card-badge">빠른정답</div>
+                <div class="card-id">ID ${book.name}</div>
+              </div>
+            `;
+            grid.appendChild(card);
+          });
+          filterCards();
+        } catch (e) {
+          loadingState.style.display = 'none';
+          console.error('교재 목록 로드 실패', e);
+        }
+      }
+
+      // ── 교재 동기화 (관리자 전용) ──
+      async function syncBooks() {
+        const toast = document.getElementById('syncToast');
+        const syncBtn = document.getElementById('syncBtn');
+        const mobileSyncBtn = document.getElementById('mobileSyncBtn');
+
+        // 토스트 표시
+        toast.className = 'show';
+        toast.innerHTML = '<span style="animation: spin 1s linear infinite; display:inline-block;">⏳</span> 교재 동기화 중...';
+        if (syncBtn) syncBtn.disabled = true;
+        if (mobileSyncBtn) mobileSyncBtn.disabled = true;
+
+        try {
+          const res = await fetch('/api/sync_books', { method: 'POST' });
+          const data = await res.json();
+
+          // 성공 토스트
+          toast.className = 'show success';
+          const errText = data.errors && data.errors.length > 0
+            ? ` (오류 ${data.errors.length}개)` : '';
+          toast.innerHTML = `✅ ${data.message}${errText}`;
+
+          // 교재 카드 목록 새로고침
+          await loadBooks();
+        } catch (e) {
+          toast.className = 'show error';
+          toast.innerHTML = '❌ 동기화 실패: ' + e.message;
+        } finally {
+          if (syncBtn) syncBtn.disabled = false;
+          if (mobileSyncBtn) mobileSyncBtn.disabled = false;
+          setTimeout(() => { toast.className = ''; }, 3500);
+        }
+      }
+
       // ── 검색 필터 ──
       function filterCards() {
         const q = document.getElementById('searchInput').value.toLowerCase();
@@ -823,7 +928,7 @@
           card.style.display = show ? '' : 'none';
           if (show) visible++;
         });
-        document.getElementById('emptyState').style.display = visible === 0 ? 'block' : 'none';
+        document.getElementById('emptyState').style.display = visible === 0 && document.getElementById('cardGrid').children.length > 0 ? 'block' : 'none';
       }
 
       function togglePin(btn) {
@@ -1088,13 +1193,64 @@
         }
 
         const win = window.open('', '_blank');
-        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오답 문제집 PDF</title><style>${css}</style></head><body>${body}</body></html>`);
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오답 문제집 PDF</title><style>${css}</style></head><body>${body}<div class="card-grid" id="cardGrid">
+    <a class="card" href="textbooks/자이스토리물리학.html" data-title="자이스토리물리학" data-id="자이스토리물리학">
+      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+      <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9791162409381.jpg?t=2974940" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="card-thumb-placeholder" style="display:none;">📖</div>
+      <div class="card-body">
+        <div class="card-title">자이스토리물리학</div>
+        <div class="card-sub"></div>
+        <div class="card-badge">빠른정답</div>
+        <div class="card-id">ID 자이스토리물리학</div>
+      </div>
+    </a>
+    
+    <a class="card" href="textbooks/엔픽물리학.html" data-title="엔픽물리학" data-id="엔픽물리학">
+      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+      <img class="card-thumb" src="https://image.yes24.com/goods/147983370/XL" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="card-thumb-placeholder" style="display:none;">📖</div>
+      <div class="card-body">
+        <div class="card-title">엔픽물리학</div>
+        <div class="card-sub"></div>
+        <div class="card-badge">빠른정답</div>
+        <div class="card-id">ID 엔픽물리학</div>
+      </div>
+    </a>
+    
+    <a class="card" href="textbooks/미적쎈.html" data-title="미적쎈" data-id="미적쎈">
+      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+      <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9788928349029.jpg?t=2974549" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="card-thumb-placeholder" style="display:none;">📖</div>
+      <div class="card-body">
+        <div class="card-title">미적쎈</div>
+        <div class="card-sub"></div>
+        <div class="card-badge">빠른정답</div>
+        <div class="card-id">ID 미적쎈</div>
+      </div>
+    </a>
+    
+    <a class="card" href="textbooks/물리학.html" data-title="물리학" data-id="물리학">
+      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+      <img class="card-thumb" src="https://file.megastudy.net/ebook/27623/27623/page/go1.jpg" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="card-thumb-placeholder" style="display:none;">📖</div>
+      <div class="card-body">
+        <div class="card-title">물리학</div>
+        <div class="card-sub"></div>
+        <div class="card-badge">빠른정답</div>
+        <div class="card-id">ID 물리학</div>
+      </div>
+    </a>
+    
+</body></html>`);
         win.document.close();
         setTimeout(() => win.print(), 1200);
       }
 
       window.onload = function () {
         loadUserInfo();
+        loadBooks();
+        checkPendingRequest();
       };
 
       // ── 모바일 햄버거 메뉴 토글 ──
@@ -1117,6 +1273,83 @@
         if (!menu.contains(e.target) && !btn.contains(e.target)) {
           menu.classList.remove('open');
           btn.classList.remove('open');
+        }
+      }
+
+      // ── 교재 추가 요청 로직 ──
+      let currentRequestId = null;
+
+      function toggleFabMenu() {
+        const menu = document.getElementById('fabMenu');
+        const btn = document.querySelector('.fab-btn');
+        menu.classList.toggle('open');
+        btn.classList.toggle('open');
+      }
+
+      function openBookRequestModal() {
+        const menu = document.getElementById('fabMenu');
+        const btn = document.querySelector('.fab-btn');
+        menu.classList.remove('open');
+        btn.classList.remove('open');
+        
+        document.getElementById('bookRequestModal').style.display = 'flex';
+        document.getElementById('requestBookName').value = '';
+      }
+
+      function closeBookRequestModal() {
+        document.getElementById('bookRequestModal').style.display = 'none';
+      }
+
+      async function submitBookRequest() {
+        const bookName = document.getElementById('requestBookName').value.trim();
+        if (!bookName) return alert('교재명을 입력해주세요.');
+        
+        try {
+          const res = await fetch('/api/book_requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ book_name: bookName })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            closeBookRequestModal();
+            checkPendingRequest();
+          } else {
+            alert(data.error || '요청 실패');
+          }
+        } catch (e) {
+          console.error(e);
+          alert('오류가 발생했습니다.');
+        }
+      }
+
+      async function cancelBookRequest() {
+        if (!confirm('요청을 취소하시겠습니까?')) return;
+        if (!currentRequestId) return;
+        try {
+          const res = await fetch('/api/book_requests/' + currentRequestId, { method: 'DELETE' });
+          if (res.ok) {
+            checkPendingRequest();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function checkPendingRequest() {
+        try {
+          const res = await fetch('/api/book_requests/my');
+          const data = await res.json();
+          const badge = document.getElementById('pendingRequestBadge');
+          if (data.has_request) {
+            currentRequestId = data.request.id;
+            badge.style.display = 'flex';
+          } else {
+            currentRequestId = null;
+            badge.style.display = 'none';
+          }
+        } catch (e) {
+          console.error(e);
         }
       }
     </script>

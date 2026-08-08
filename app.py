@@ -27,6 +27,17 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # book_requests 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS book_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                book_name TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         # scraps 테이블 생성
         c.execute('''
             CREATE TABLE IF NOT EXISTS scraps (
@@ -219,6 +230,76 @@ def list_folders():
     folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
     return jsonify({"folders": folders})
 
+@app.route('/api/books', methods=['GET'])
+@login_required
+def list_books():
+    """textbooks 폴더에 있는 HTML 파일 목록과 메타데이터를 반환합니다."""
+    textbooks_dir = os.path.join(BASE_DIR, 'textbooks')
+    img_dir = os.path.join(BASE_DIR, 'img')
+    import json as _json
+
+    books = []
+    if os.path.exists(textbooks_dir):
+        for fname in sorted(os.listdir(textbooks_dir)):
+            if not fname.endswith('.html'):
+                continue
+            book_name = fname[:-5]  # .html 제거
+            meta = {}
+            # img/{book_name}/meta.json 에서 커버 URL 읽기
+            meta_path = os.path.join(img_dir, book_name, 'meta.json')
+            if os.path.exists(meta_path):
+                try:
+                    with open(meta_path, encoding='utf-8') as mf:
+                        meta = _json.load(mf)
+                except Exception:
+                    pass
+
+            cover_url = meta.get('custom_cover_url', '')
+            # 커버 URL이 없으면 첫 번째 이미지 경로를 사용
+            if not cover_url:
+                img_folder = os.path.join(img_dir, book_name)
+                if os.path.exists(img_folder):
+                    valid_exts = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'}
+                    imgs = sorted([f for f in os.listdir(img_folder)
+                                   if os.path.splitext(f)[1].lower() in valid_exts])
+                    if imgs:
+                        cover_url = f'/img/{book_name}/{imgs[0]}'
+
+            books.append({
+                'name': book_name,
+                'html': f'textbooks/{fname}',
+                'cover_url': cover_url,
+            })
+    return jsonify({'books': books})
+
+@app.route('/api/sync_books', methods=['POST'])
+@admin_required
+def sync_books():
+    """img 폴더를 스캔하여 없는 교재 에셋을 생성하고 main.html 카드를 동기화합니다."""
+    img_dir = os.path.join(BASE_DIR, 'img')
+    if not os.path.exists(img_dir):
+        return jsonify({'ok': True, 'synced': 0, 'message': 'img 폴더가 없습니다.'})
+
+    synced = []
+    errors = []
+    for folder in sorted(os.listdir(img_dir)):
+        folder_path = os.path.join(img_dir, folder)
+        if not os.path.isdir(folder_path):
+            continue
+        try:
+            generate_book_assets(folder)
+            synced.append(folder)
+        except Exception as e:
+            errors.append({'folder': folder, 'error': str(e)})
+
+    return jsonify({
+        'ok': True,
+        'synced': len(synced),
+        'synced_folders': synced,
+        'errors': errors,
+        'message': f'{len(synced)}개 교재 동기화 완료'
+    })
+
 @app.route('/api/folder_images', methods=['GET'])
 @login_required
 def list_folder_images():
@@ -408,6 +489,83 @@ def run_delete_sync():
     folder = request.args.get('folder', '')
     target = request.args.get('target', '') or request.args.get('filename', '') or request.args.get('num', '')
     list(delete_image_task(folder, target))
+    return jsonify({"ok": True})
+
+# ── 교재 추가 요청 (Book Request) API ──
+@app.route('/api/book_requests/my', methods=['GET'])
+@login_required
+def get_my_book_request():
+    username = session['username']
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, book_name, status, created_at FROM book_requests WHERE username=? AND status='pending' ORDER BY created_at DESC LIMIT 1", (username,))
+        row = c.fetchone()
+        if row:
+            return jsonify({"has_request": True, "request": {"id": row[0], "book_name": row[1], "status": row[2], "created_at": row[3]}})
+        return jsonify({"has_request": False})
+
+@app.route('/api/book_requests', methods=['POST'])
+@login_required
+def create_book_request():
+    username = session['username']
+    data = request.get_json(silent=True) or {}
+    book_name = data.get('book_name', '').strip()
+    if not book_name:
+        return jsonify({"error": "교재 이름이 필요합니다."}), 400
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        # 이미 대기중인 요청이 있는지 확인
+        c.execute("SELECT id FROM book_requests WHERE username=? AND status='pending'", (username,))
+        if c.fetchone():
+            return jsonify({"error": "이미 대기 중인 교재 추가 요청이 있습니다."}), 400
+        
+        c.execute("INSERT INTO book_requests (username, book_name) VALUES (?, ?)", (username, book_name))
+        conn.commit()
+    return jsonify({"ok": True})
+
+@app.route('/api/book_requests/<int:req_id>', methods=['DELETE'])
+@login_required
+def delete_book_request(req_id):
+    username = session['username']
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM book_requests WHERE id=? AND username=?", (req_id, username))
+        conn.commit()
+    return jsonify({"ok": True})
+
+@app.route('/api/admin/book_requests', methods=['GET'])
+@admin_required
+def admin_get_book_requests():
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, username, book_name, status, created_at FROM book_requests ORDER BY created_at DESC")
+        rows = c.fetchall()
+        requests = [{
+            "id": r[0],
+            "username": r[1],
+            "book_name": r[2],
+            "status": r[3],
+            "created_at": r[4]
+        } for r in rows]
+    return jsonify({"requests": requests})
+
+@app.route('/api/admin/book_requests/<int:req_id>/complete', methods=['POST'])
+@admin_required
+def admin_complete_book_request(req_id):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE book_requests SET status='completed' WHERE id=?", (req_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+@app.route('/api/admin/book_requests/<int:req_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_book_request(req_id):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM book_requests WHERE id=?", (req_id,))
+        conn.commit()
     return jsonify({"ok": True})
 
 if __name__ == '__main__':
