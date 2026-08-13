@@ -274,11 +274,21 @@
                 </div>
             </div>
 
-            <!-- 상태 표시 -->
+            <!-- 상태 및 토글 설정 -->
             <div id="githubStatusBox" style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
-                <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">자동 동기화 정보</div>
-                <div style="font-size:14px;color:var(--text-main);">⏱️ 자동 동기화: <strong>매 60초</strong>마다 변경사항 감지 시 자동 실행</div>
-                <div style="font-size:14px;color:var(--text-main);margin-top:6px;">📁 대상 저장소: <strong>Zenon-Ultra/dhekqapdlzj1</strong></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div>
+                        <div style="font-size:15px;font-weight:700;color:var(--text-main);">⏱️ 자동 동기화 (Auto Sync)</div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">60초마다 변경사항을 감지하여 GitHub에 자동 저장</div>
+                    </div>
+                    <label class="toggle-wrap" style="cursor:pointer;">
+                        <input type="checkbox" id="autoSyncToggle" style="display:none;" onchange="toggleAutoSync(this.checked)">
+                        <div class="toggle-switch"></div>
+                        <span id="autoSyncStatusText" style="font-weight:700;font-size:13px;color:#ef4444;">OFF</span>
+                    </label>
+                </div>
+                <hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;">
+                <div style="font-size:13px;color:var(--text-muted);">📁 대상 저장소: <strong style="color:var(--text-main);">Zenon-Ultra/dhekqapdlzj1</strong></div>
             </div>
 
             <!-- 백업 결과 -->
@@ -286,7 +296,7 @@
 
             <button class="btn" id="githubBackupBtn" onclick="githubBackup()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
                 <span id="githubBackupBtnIcon">🚀</span>
-                <span id="githubBackupBtnText">지금 GitHub에 백업하기</span>
+                <span id="githubBackupBtnText">지금 GitHub에 수동 백업하기</span>
             </button>
         </div>
     </div>
@@ -336,7 +346,7 @@
         if(id !== 'tab-extract' && id !== 'tab-requests' && id !== 'tab-github') fetchFolders();
         if(id === 'tab-delete') setTimeout(loadDeleteFolderGallery, 100);
         if(id === 'tab-requests') loadRequests();
-        if(id === 'tab-github') resetGithubResult();
+        if(id === 'tab-github') { resetGithubResult(); loadAutoSyncStatus(); }
     }
 
     // 폴더 목록 가져오기
@@ -657,8 +667,43 @@
         }
     }
 
+    // ── 자동 동기화 ON/OFF 제어 ──
+    async function loadAutoSyncStatus() {
+        try {
+            const res = await fetch('/api/admin/github_auto_sync');
+            const data = await res.json();
+            const toggle = document.getElementById('autoSyncToggle');
+            const statusText = document.getElementById('autoSyncStatusText');
+            if (toggle && statusText) {
+                toggle.checked = !!data.enabled;
+                statusText.textContent = data.enabled ? 'ON' : 'OFF';
+                statusText.style.color = data.enabled ? '#10b981' : '#ef4444';
+            }
+        } catch (e) {
+            console.error('Auto sync status fetch error:', e);
+        }
+    }
+
+    async function toggleAutoSync(enabled) {
+        const statusText = document.getElementById('autoSyncStatusText');
+        if (statusText) {
+            statusText.textContent = enabled ? 'ON' : 'OFF';
+            statusText.style.color = enabled ? '#10b981' : '#ef4444';
+        }
+        try {
+            await fetch('/api/admin/github_auto_sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            });
+        } catch (e) {
+            console.error('Toggle auto sync error:', e);
+        }
+    }
+
     window.onload = function() {
         fetchFolders();
+        loadAutoSyncStatus();
         if (document.getElementById('tab-requests').classList.contains('active')) {
             loadRequests();
         }

@@ -11,7 +11,7 @@ from book_assets import generate_book_assets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from services.github_sync import start_auto_sync
+from services.github_sync import start_auto_sync, is_auto_sync_enabled, set_auto_sync_enabled
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_admin_key_hyperx_2026'
@@ -644,6 +644,17 @@ def github_backup():
                 os.remove(lock_file)
             except Exception:
                 pass
+
+@app.route('/api/admin/github_auto_sync', methods=['GET', 'POST'])
+@admin_required
+def github_auto_sync_toggle():
+    """자동 백업 ON/OFF 상태를 조회하거나 변경합니다."""
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get('enabled', False))
+        set_auto_sync_enabled(enabled)
+        return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
+    return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
 
 if __name__ == '__main__':
     print("Server has started! Open browser and go to http://127.0.0.1:5000")
