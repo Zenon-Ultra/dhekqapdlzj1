@@ -119,6 +119,7 @@
         <div class="nav-item" onclick="switchTab('tab-merge', this)">🔗 이미지 합치기</div>
         <div class="nav-item" onclick="switchTab('tab-delete', this)">🗑️ 문제 사진 삭제</div>
         <div class="nav-item" onclick="switchTab('tab-requests', this)">📥 교재 요청 관리</div>
+        <div class="nav-item" onclick="switchTab('tab-github', this)">☁️ GitHub 백업</div>
         <div class="nav-item logout" onclick="location.href='/logout'">🚪 로그아웃</div>
         <div class="nav-item back-home" onclick="location.href='/main'">← 메인 대시보드로 돌아가기</div>
     </div>
@@ -261,6 +262,34 @@
             </table>
         </div>
     </div>
+
+    <!-- 8. GitHub 백업 탭 -->
+    <div id="tab-github" class="section">
+        <div class="card" style="max-width:600px;">
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+                <div style="font-size:48px;">☁️</div>
+                <div>
+                    <div style="font-size:20px;font-weight:700;margin-bottom:4px;">GitHub 수동 백업</div>
+                    <div style="color:var(--text-muted);font-size:14px;">현재 변경사항을 즉시 GitHub 저장소에 커밋하고 푸시합니다.</div>
+                </div>
+            </div>
+
+            <!-- 상태 표시 -->
+            <div id="githubStatusBox" style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">자동 동기화 정보</div>
+                <div style="font-size:14px;color:var(--text-main);">⏱️ 자동 동기화: <strong>매 60초</strong>마다 변경사항 감지 시 자동 실행</div>
+                <div style="font-size:14px;color:var(--text-main);margin-top:6px;">📁 대상 저장소: <strong>Zenon-Ultra/dhekqapdlzj1</strong></div>
+            </div>
+
+            <!-- 백업 결과 -->
+            <div id="githubResultBox" style="display:none;border-radius:10px;padding:16px;margin-bottom:20px;font-size:14px;"></div>
+
+            <button class="btn" id="githubBackupBtn" onclick="githubBackup()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                <span id="githubBackupBtnIcon">🚀</span>
+                <span id="githubBackupBtnText">지금 GitHub에 백업하기</span>
+            </button>
+        </div>
+    </div>
 </div>
 
 <!-- Modal -->
@@ -298,14 +327,16 @@
             'tab-split': ['🔪 이미지 분할', '두 문제가 붙어있는 이미지를 반으로 가르고, 이후 번호들을 자동으로 밀어냅니다.'],
             'tab-merge': ['🔗 이미지 합치기', '연속된 이미지들을 하나로 이어 붙이고, 이후 번호를 앞으로 당깁니다.'],
             'tab-delete': ['🗑️ 문제 사진 삭제', '교재 내 특정 문제 사진을 선택하여 삭제하고 이후 번호들을 당깁니다.'],
-            'tab-requests': ['📥 교재 요청 관리', '사용자들이 추가를 요청한 교재 목록을 확인하고 관리합니다.']
+            'tab-requests': ['📥 교재 요청 관리', '사용자들이 추가를 요청한 교재 목록을 확인하고 관리합니다.'],
+            'tab-github':   ['☁️ GitHub 백업', '현재 변경사항을 GitHub 저장소에 수동으로 즉시 백업합니다.']
         };
         document.getElementById('mainTitle').textContent = titles[id][0];
         document.getElementById('mainSubtitle').textContent = titles[id][1];
         
-        if(id !== 'tab-extract' && id !== 'tab-requests') fetchFolders();
+        if(id !== 'tab-extract' && id !== 'tab-requests' && id !== 'tab-github') fetchFolders();
         if(id === 'tab-delete') setTimeout(loadDeleteFolderGallery, 100);
         if(id === 'tab-requests') loadRequests();
+        if(id === 'tab-github') resetGithubResult();
     }
 
     // 폴더 목록 가져오기
@@ -559,6 +590,71 @@
             await fetch('/api/admin/book_requests/' + id, { method: 'DELETE' });
             loadRequests();
         } catch (e) { console.error(e); }
+    }
+
+    // ── GitHub 백업 ──
+    function resetGithubResult() {
+        const box = document.getElementById('githubResultBox');
+        box.style.display = 'none';
+        box.innerHTML = '';
+        const btn = document.getElementById('githubBackupBtn');
+        btn.disabled = false;
+        document.getElementById('githubBackupBtnIcon').textContent = '🚀';
+        document.getElementById('githubBackupBtnText').textContent = '지금 GitHub에 백업하기';
+    }
+
+    async function githubBackup() {
+        const btn = document.getElementById('githubBackupBtn');
+        const icon = document.getElementById('githubBackupBtnIcon');
+        const text = document.getElementById('githubBackupBtnText');
+        const resultBox = document.getElementById('githubResultBox');
+
+        btn.disabled = true;
+        icon.textContent = '⏳';
+        text.textContent = '백업 중...';
+        resultBox.style.display = 'none';
+
+        try {
+            const res = await fetch('/api/admin/github_backup', { method: 'POST' });
+            const data = await res.json();
+
+            resultBox.style.display = 'block';
+            if (data.ok) {
+                if (data.changed) {
+                    resultBox.style.background = '#d1fae5';
+                    resultBox.style.border = '1px solid #6ee7b7';
+                    resultBox.style.color = '#065f46';
+                    resultBox.innerHTML = `
+                        <div style="font-size:20px;margin-bottom:8px;">✅ 백업 완료!</div>
+                        <div style="font-size:13px;opacity:0.85;">${data.commit}</div>
+                    `;
+                } else {
+                    resultBox.style.background = '#eff6ff';
+                    resultBox.style.border = '1px solid #93c5fd';
+                    resultBox.style.color = '#1e40af';
+                    resultBox.innerHTML = '<div style="font-size:16px;">ℹ️ ' + data.message + '</div>';
+                }
+                icon.textContent = '✅';
+                text.textContent = '백업 완료';
+            } else {
+                resultBox.style.background = '#fee2e2';
+                resultBox.style.border = '1px solid #fca5a5';
+                resultBox.style.color = '#991b1b';
+                resultBox.innerHTML = '<div style="font-size:16px;">🚨 오류: ' + (data.error || '알 수 없는 오류') + '</div>';
+                icon.textContent = '🚨';
+                text.textContent = '백업 실패 — 다시 시도';
+                btn.disabled = false;
+            }
+        } catch (e) {
+            resultBox.style.display = 'block';
+            resultBox.style.background = '#fee2e2';
+            resultBox.style.border = '1px solid #fca5a5';
+            resultBox.style.color = '#991b1b';
+            resultBox.innerHTML = '<div>🚨 네트워크 오류: ' + e.message + '</div>';
+            icon.textContent = '🚨';
+            text.textContent = '백업 실패 — 다시 시도';
+            btn.disabled = false;
+        }
     }
 
     window.onload = function() {

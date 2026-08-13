@@ -573,6 +573,61 @@ def admin_delete_book_request(req_id):
         conn.commit()
     return jsonify({"ok": True})
 
+@app.route('/api/admin/github_backup', methods=['POST'])
+@admin_required
+def github_backup():
+    """관리자가 수동으로 GitHub에 즉시 백업합니다."""
+    import subprocess, time
+    token = os.environ.get('GITHUB_TOKEN')
+    if not token:
+        return jsonify({'ok': False, 'error': 'GITHUB_TOKEN 환경변수가 설정되지 않았습니다.'}), 500
+
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
+    lock_file = os.path.join(cwd, '.git_sync.lock')
+
+    # 락 확인 (5분 이상 오래된 락은 해제)
+    if os.path.exists(lock_file):
+        if time.time() - os.path.getmtime(lock_file) > 300:
+            os.remove(lock_file)
+        else:
+            return jsonify({'ok': False, 'error': '다른 동기화 작업이 진행 중입니다. 잠시 후 다시 시도해주세요.'}), 409
+
+    try:
+        with open(lock_file, 'w') as f:
+            f.write(str(time.time()))
+
+        subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
+        subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False)
+        subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False)
+
+        status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd)
+        changed_files = status.stdout.strip()
+
+        if not changed_files:
+            return jsonify({'ok': True, 'message': '변경된 파일이 없습니다. GitHub는 이미 최신 상태입니다.', 'changed': False})
+
+        subprocess.run(['git', 'add', '.'], cwd=cwd, check=True)
+        commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
+        subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True)
+        subprocess.run(['git', 'pull', '--rebase', 'origin', 'main'], cwd=cwd, check=False)
+        result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise Exception(result.stderr or 'Push 실패')
+
+        return jsonify({
+            'ok': True,
+            'message': 'GitHub 백업 완료!',
+            'changed': True,
+            'commit': commit_msg
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    finally:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+
 if __name__ == '__main__':
     print("Server has started! Open browser and go to http://127.0.0.1:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
