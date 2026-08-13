@@ -1194,6 +1194,18 @@
 
         const win = window.open('', '_blank');
         win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오답 문제집 PDF</title><style>${css}</style></head><body>${body}<div class="card-grid" id="cardGrid">
+    <a class="card" href="textbooks/234.html" data-title="234" data-id="234">
+      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
+      <img class="card-thumb" src="../img/234/001.png" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="card-thumb-placeholder" style="display:none;">📖</div>
+      <div class="card-body">
+        <div class="card-title">234</div>
+        <div class="card-sub"></div>
+        <div class="card-badge">빠른정답</div>
+        <div class="card-id">ID 234</div>
+      </div>
+    </a>
+    
     <a class="card" href="textbooks/사곡고_내신_2025.html" data-title="사곡고 내신 2025" data-id="사곡고_내신_2025">
       <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
       <img class="card-thumb" src="../img/%EC%82%AC%EA%B3%A1%EA%B3%A0%20%EB%82%B4%EC%8B%A0%202025/001.png" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
