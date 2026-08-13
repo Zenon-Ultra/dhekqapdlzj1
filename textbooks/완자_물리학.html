@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>교재 채점 보관함</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #1a6ef5;
+      --blue-dark: #1458cc;
+      --blue-light: #e8f0fe;
+      --bg: #f0f2f7;
+      --white: #ffffff;
+      --text: #1a1d2e;
+      --sub: #6b7280;
+      --border: #e5e7ef;
+      --shadow: 0 2px 16px rgba(26,110,245,0.08);
+      --radius: 12px;
+      --sidebar: 260px;
+    }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      z-index: 50;
+    }
+
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .back-btn {
+      display: flex; align-items: center; gap: 5px;
+      color: var(--sub); font-size: 13px; font-weight: 500;
+      cursor: pointer; background: none; border: none;
+      font-family: inherit; transition: color .15s;
+      padding: 6px 10px; border-radius: 6px;
+    }
+    .back-btn:hover { color: var(--blue); background: var(--blue-light); }
+
+    .header-title { font-size: 16px; font-weight: 800; color: var(--text); }
+    .header-sub { font-size: 12px; color: var(--sub); margin-top: 1px; }
+
+    .filter-tabs { display: flex; gap: 6px; }
+    .filter-tab {
+      padding: 5px 14px; border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; border: 1.5px solid var(--border);
+      background: var(--white); color: var(--sub);
+      font-family: inherit; transition: all .15s;
+    }
+    .filter-tab.active { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+
+    /* ── Layout ── */
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar);
+      flex-shrink: 0;
+      background: var(--white);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-head {
+      padding: 18px 18px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar-title {
+      font-size: 14px; font-weight: 800; color: var(--text);
+      display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    }
+    .count-badge {
+      background: var(--blue); color: #fff;
+      font-size: 11px; font-weight: 700;
+      padding: 1px 8px; border-radius: 20px;
+    }
+    .btn-pdf {
+      width: 100%; padding: 11px;
+      background: var(--blue); color: #fff;
+      border: none; border-radius: 8px;
+      font-family: inherit; font-size: 13px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 6px;
+      transition: background .15s, transform .15s;
+    }
+    .btn-pdf:hover { background: var(--blue-dark); transform: translateY(-1px); }
+
+    .cart-list {
+      flex: 1; overflow-y: auto; padding: 10px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .cart-item {
+      border-radius: 8px; border: 1.5px solid var(--border);
+      overflow: hidden; background: #fafbff;
+      position: relative; transition: border-color .15s;
+    }
+    .cart-item img { width: 100%; display: block; }
+    .cart-item-label {
+      position: absolute; top: 6px; left: 6px;
+      background: var(--blue); color: #fff;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 4px;
+    }
+    .cart-remove {
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(255,255,255,0.92); border: none; border-radius: 4px;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; cursor: pointer; color: #ef4444;
+    }
+    .cart-remove:hover { background: #fee2e2; }
+    .cart-empty { text-align: center; color: var(--sub); font-size: 13px; padding: 32px 0; }
+    .cart-empty-icon { font-size: 30px; margin-bottom: 8px; }
+
+    /* 오답노트 토글 버튼 */
+    .btn-workbook {
+      width: 100%; padding: 9px;
+      background: #fff; color: #6b7280;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-family: inherit; font-size: 12px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 6px;
+      transition: all .15s; margin-top: 8px;
+    }
+    .btn-workbook:hover { border-color: #f59e0b; color: #b45309; background: #fffbeb; }
+    .btn-workbook.active {
+      background: #fef3c7; color: #92400e;
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245,158,11,0.25);
+    }
+    .workbook-badge {
+      display: none; font-size: 10px; background: #f59e0b; color: #fff;
+      padding: 1px 6px; border-radius: 10px; font-weight: 800;
+    }
+    .btn-workbook.active .workbook-badge { display: inline; }
+
+    /* ── Main ── */
+    .main { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
+    .main-top { display: flex; align-items: center; justify-content: space-between; }
+    .main-top h2 { font-size: 17px; font-weight: 800; }
+    .main-top span { font-size: 13px; color: var(--sub); }
+
+    /* ══════════════════════════════════════
+       ★ 4열 고정 그리드 + 균일 이미지 높이
+    ══════════════════════════════════════ */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .problem-card {
+      background: var(--white);
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform .18s, border-color .18s, box-shadow .18s;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .problem-card:hover {
+      transform: translateY(-3px);
+      border-color: #93c5fd;
+      box-shadow: 0 6px 20px rgba(26,110,245,0.12);
+    }
+    .problem-card.selected {
+      border-color: var(--blue);
+      background: #f0f6ff;
+      box-shadow: 0 0 0 3px rgba(26,110,245,0.15);
+    }
+
+    .card-header {
+      padding: 7px 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .card-page {
+      background: var(--blue-light); color: var(--blue);
+      font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 20px;
+    }
+    .card-check {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; transition: all .15s;
+    }
+    .problem-card.selected .card-check {
+      background: var(--blue); border-color: var(--blue); color: #fff;
+    }
+
+    /* ★ 이미지 영역 — 고정 높이 + object-fit으로 균일하게 */
+    .card-img {
+      flex: 1;
+      height: 160px;        /* ← 원하는 높이로 조절 (px) */
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8f9fc;
+    }
+    .card-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;  /* contain: 잘림 없이 비율 유지 / cover: 꽉 채우기 */
+      display: block;
+    }
+
+    /* ✂️ 자르기 버튼 */
+    .btn-split {
+      width: 100%;
+      padding: 5px 0;
+      background: #fff7ed;
+      color: #c2410c;
+      border: none;
+      border-top: 1px solid #fed7aa;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+    .btn-split:hover { background: #ffedd5; }
+    .btn-split:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* 🗑️ 이미지 삭제 버튼 */
+    .btn-delete-img {
+      width: 100%;
+      padding: 5px 0;
+      background: #fef2f2;
+      color: #dc2626;
+      border: none;
+      border-top: 1px solid #fca5a5;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+    .btn-delete-img:hover { background: #fee2e2; }
+
+    /* ⭐ 스크랩 버튼 */
+    .btn-scrap {
+      background: #fff;
+      border: 1.5px solid #f59e0b;
+      color: #b45309;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all .15s;
+    }
+    .btn-scrap.active {
+      background: #f59e0b;
+      color: #fff;
+      border-color: #f59e0b;
+    }
+
+    /* 분할 진행 오버레이 */
+    .split-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      backdrop-filter: blur(4px);
+    }
+    .split-overlay.open { display: flex; }
+    .split-box {
+      background: #fff;
+      border-radius: 16px;
+      padding: 36px 44px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    }
+    .split-spinner {
+      width: 40px; height: 40px;
+      border: 4px solid #e5e7ef;
+      border-top-color: #c2410c;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 16px;
+    }
+    .split-msg { font-size: 15px; font-weight: 600; color: #1a1d2e; }
+
+    /* 합치기 버튼 */
+    .btn-merge {
+      width: 100%; padding: 9px;
+      background: #fff;
+      color: #059669;
+      border: 1.5px solid #6ee7b7;
+      border-radius: 8px;
+      font-family: inherit; font-size: 12px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 6px;
+      transition: all .15s; margin-top: 8px;
+    }
+    .btn-merge:hover { background: #ecfdf5; border-color: #059669; }
+    .btn-merge:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* 로딩 */
+    .loading { text-align: center; padding: 60px; color: var(--sub); grid-column: span 4; }
+    .spinner {
+      width: 34px; height: 34px; border: 3px solid var(--border);
+      border-top-color: var(--blue); border-radius: 50%;
+      animation: spin .7s linear infinite; margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(60px);
+      background: #1a1d2e; color: #fff;
+      padding: 9px 18px; border-radius: 20px;
+      font-size: 13px; font-weight: 600;
+      opacity: 0; transition: all .25s;
+      pointer-events: none; z-index: 999;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ════════════════════════════════════════════
+       휴대폰 레이아웃
+    ════════════════════════════════════════════ */
+    @media (max-width: 700px) {
+      /* 헤더 컴팩트 */
+      header { padding: 0 12px; height: 52px; }
+      .header-title { font-size: 13px; }
+      .header-sub { display: none; }
+      .filter-tabs { gap: 4px; }
+      .filter-tab { padding: 4px 10px; font-size: 11px; }
+      .back-btn { font-size: 12px; padding: 4px 6px; }
+
+      /* 레이아웃: 사이드바를 하단 드로어로 전환 */
+      .layout { flex-direction: column; }
+      .main { padding: 12px; }
+
+      /* 모바일: 사이드바 하단 고정 */
+      .sidebar {
+        width: 100%;
+        border-right: none;
+        border-top: 1px solid var(--border);
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        z-index: 200;
+        flex-direction: row;
+        height: auto;
+        max-height: 65vh;
+        transform: translateY(calc(100% - 56px)); /* 좌시러만 보임 */
+        transition: transform .3s ease;
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+      }
+      .sidebar.expanded {
+        transform: translateY(0);
+        overflow-y: auto;
+        flex-direction: column;
+      }
+      .sidebar-head {
+        padding: 10px 14px;
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .sidebar-head::before {
+        content: '';
+        display: block;
+        width: 36px; height: 4px;
+        background: #d1d5db;
+        border-radius: 2px;
+        margin: 0 auto 10px;
+      }
+      .sidebar-head .sidebar-title { margin-bottom: 0; font-size: 13px; }
+      .cart-list {
+        display: none;
+        padding: 6px 10px 80px;
+      }
+      .sidebar.expanded .cart-list { display: flex; }
+
+      /* 그리드: 2열 */
+      .problem-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding-bottom: 70px; /* 사이드바 곹치는 공간 */
+      }
+
+      /* 카드 이미지 높이 조절 */
+      .card-img { height: 130px; }
+
+      /* 터치에 적합한 비끼 크기 */
+      .btn-split, .btn-delete-img {
+        padding: 7px 0;
+        font-size: 11px;
+      }
+      .btn-scrap {
+        font-size: 10px;
+        padding: 3px 7px;
+      }
+
+      /* 모바일 PDF 버튼 */
+      .btn-pdf { font-size: 12px; padding: 10px; }
+      .btn-workbook { font-size: 11px; padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <button class="back-btn" onclick="location.href='/main'">
+      <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+      목록으로
+    </button>
+    <div>
+      <div class="header-title" id="bookTitle">교재 뷰어</div>
+      <div class="header-sub" id="bookSub">문제를 확인하고 스크랩하세요.</div>
+    </div>
+  </div>
+  <div class="filter-tabs" id="filterTabs">
+    <div class="filter-tab active" onclick="if(typeof setFilter==='function')setFilter('all', this)">모든 문제</div>
+    <div class="filter-tab" onclick="if(typeof setFilter==='function')setFilter('unscraped', this)">미스크랩</div>
+    <div class="filter-tab" onclick="if(typeof setFilter==='function')setFilter('scraped', this)">스크랩 완료</div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- 사이드바 -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-head" onclick="toggleSidebarMobile()">
+      <div class="sidebar-title">
+        🛝 선택된 문제
+        <span class="count-badge" id="countBadge">0</span>
+      </div>
+      <button class="btn-pdf" onclick="event.stopPropagation(); printExam()">🗈️ 시험지 PDF 만들기</button>
+      <button class="btn-workbook" id="workbookBtn" onclick="event.stopPropagation(); toggleWorkbookMode()">
+        📝 오답노트 모드 <span class="workbook-badge">ON</span>
+      </button>
+      <button class="btn-workbook" id="scrapBulkBtn" onclick="event.stopPropagation(); scrapSelectedProblems()" style="background:#fffbeb; color:#b45309; border-color:#f59e0b; margin-top:8px;">
+        ⭐ 선택 문제 일괄 스크랩
+      </button>
+      <button class="btn-merge" id="mergeBtn" onclick="event.stopPropagation(); mergeProblem()" disabled>
+        🔗 선택한 문제 합치기
+      </button>
+    </div>
+    <div class="cart-list" id="cartList">
+      <div class="cart-empty">
+        <div class="cart-empty-icon">📋</div>
+        <div>문제를 선택하면<br>여기에 표시됩니다</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 -->
+  <div class="main">
+    <div class="main-top">
+      <h2>📚 AI 추출 문제 보관함</h2>
+      <span id="problemCount">0개</span>
+    </div>
+    <div class="problem-grid" id="problemGrid">
+      <div class="loading">
+        <div class="spinner"></div>이미지 분석 중...
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+//  ★ 교재별 설정 — 이 파일 복사 후 여기만 수정
+// ══════════════════════════════════════════════
+const BOOK_FOLDER = '완자 물리학';
+const BOOK_TITLE = '완자 물리학';
+const BOOK_SUB   = '';
+
+const IMAGES = [
+{ file: '../img/완자 물리학/001.png', page: 0 },
+{ file: '../img/완자 물리학/002.png', page: 0 },
+{ file: '../img/완자 물리학/003.png', page: 0 },
+{ file: '../img/완자 물리학/004.png', page: 0 },
+{ file: '../img/완자 물리학/005.png', page: 0 },
+{ file: '../img/완자 물리학/006.png', page: 0 },
+{ file: '../img/완자 물리학/007.png', page: 0 },
+{ file: '../img/완자 물리학/008.png', page: 0 },
+{ file: '../img/완자 물리학/009.png', page: 0 },
+{ file: '../img/완자 물리학/010.png', page: 0 },
+{ file: '../img/완자 물리학/011.png', page: 0 },
+{ file: '../img/완자 물리학/012.png', page: 0 },
+{ file: '../img/완자 물리학/013.png', page: 0 },
+{ file: '../img/완자 물리학/014.png', page: 0 },
+{ file: '../img/완자 물리학/015.png', page: 0 },
+{ file: '../img/완자 물리학/016.png', page: 0 },
+{ file: '../img/완자 물리학/017.png', page: 0 },
+{ file: '../img/완자 물리학/018.png', page: 0 },
+{ file: '../img/완자 물리학/019.png', page: 0 },
+{ file: '../img/완자 물리학/020.png', page: 0 },
+{ file: '../img/완자 물리학/021.png', page: 0 },
+{ file: '../img/완자 물리학/022.png', page: 0 },
+{ file: '../img/완자 물리학/023.png', page: 0 },
+{ file: '../img/완자 물리학/024.png', page: 0 },
+{ file: '../img/완자 물리학/025.png', page: 0 },
+{ file: '../img/완자 물리학/026.png', page: 0 },
+{ file: '../img/완자 물리학/027.png', page: 0 },
+{ file: '../img/완자 물리학/028.png', page: 0 },
+{ file: '../img/완자 물리학/029.png', page: 0 },
+{ file: '../img/완자 물리학/030.png', page: 0 },
+{ file: '../img/완자 물리학/031.png', page: 0 },
+{ file: '../img/완자 물리학/032.png', page: 0 },
+{ file: '../img/완자 물리학/033.png', page: 0 },
+{ file: '../img/완자 물리학/034.png', page: 0 },
+{ file: '../img/완자 물리학/035.png', page: 0 },
+{ file: '../img/완자 물리학/036.png', page: 0 },
+{ file: '../img/완자 물리학/037.png', page: 0 },
+{ file: '../img/완자 물리학/038.png', page: 0 },
+{ file: '../img/완자 물리학/039.png', page: 0 },
+{ file: '../img/완자 물리학/040.png', page: 0 },
+{ file: '../img/완자 물리학/041.png', page: 0 },
+{ file: '../img/완자 물리학/042.png', page: 0 },
+{ file: '../img/완자 물리학/043.png', page: 0 },
+{ file: '../img/완자 물리학/044.png', page: 0 },
+{ file: '../img/완자 물리학/045.png', page: 0 },
+{ file: '../img/완자 물리학/046.png', page: 0 },
+{ file: '../img/완자 물리학/047.png', page: 0 },
+{ file: '../img/완자 물리학/048.png', page: 0 },
+{ file: '../img/완자 물리학/049.png', page: 0 },
+{ file: '../img/완자 물리학/050.png', page: 0 },
+{ file: '../img/완자 물리학/051.png', page: 0 },
+{ file: '../img/완자 물리학/052.png', page: 0 },
+{ file: '../img/완자 물리학/053.png', page: 0 },
+{ file: '../img/완자 물리학/054.png', page: 0 },
+{ file: '../img/완자 물리학/055.png', page: 0 },
+{ file: '../img/완자 물리학/056.png', page: 0 },
+{ file: '../img/완자 물리학/057.png', page: 0 },
+{ file: '../img/완자 물리학/058.png', page: 0 },
+{ file: '../img/완자 물리학/059.png', page: 0 },
+{ file: '../img/완자 물리학/060.png', page: 0 },
+{ file: '../img/완자 물리학/061.png', page: 0 },
+{ file: '../img/완자 물리학/062.png', page: 0 },
+{ file: '../img/완자 물리학/063.png', page: 0 },
+{ file: '../img/완자 물리학/064.png', page: 0 },
+{ file: '../img/완자 물리학/065.png', page: 0 },
+{ file: '../img/완자 물리학/066.png', page: 0 },
+{ file: '../img/완자 물리학/067.png', page: 0 },
+{ file: '../img/완자 물리학/068.png', page: 0 },
+{ file: '../img/완자 물리학/069.png', page: 0 },
+{ file: '../img/완자 물리학/070.png', page: 0 },
+{ file: '../img/완자 물리학/071.png', page: 0 },
+{ file: '../img/완자 물리학/072.png', page: 0 },
+{ file: '../img/완자 물리학/073.png', page: 0 },
+{ file: '../img/완자 물리학/074.png', page: 0 },
+{ file: '../img/완자 물리학/075.png', page: 0 },
+{ file: '../img/완자 물리학/076.png', page: 0 },
+{ file: '../img/완자 물리학/077.png', page: 0 },
+{ file: '../img/완자 물리학/078.png', page: 0 },
+{ file: '../img/완자 물리학/079.png', page: 0 },
+{ file: '../img/완자 물리학/080.png', page: 0 },
+{ file: '../img/완자 물리학/081.png', page: 0 },
+{ file: '../img/완자 물리학/082.png', page: 0 },
+{ file: '../img/완자 물리학/083.png', page: 0 },
+{ file: '../img/완자 물리학/084.png', page: 0 },
+{ file: '../img/완자 물리학/085.png', page: 0 },
+{ file: '../img/완자 물리학/086.png', page: 0 },
+{ file: '../img/완자 물리학/087.png', page: 0 },
+{ file: '../img/완자 물리학/088.png', page: 0 },
+{ file: '../img/완자 물리학/089.png', page: 0 },
+{ file: '../img/완자 물리학/090.png', page: 0 },
+{ file: '../img/완자 물리학/091.png', page: 0 },
+{ file: '../img/완자 물리학/092.png', page: 0 },
+{ file: '../img/완자 물리학/093.png', page: 0 },
+{ file: '../img/완자 물리학/094.png', page: 0 },
+{ file: '../img/완자 물리학/095.png', page: 0 },
+{ file: '../img/완자 물리학/096.png', page: 0 },
+{ file: '../img/완자 물리학/097.png', page: 0 },
+{ file: '../img/완자 물리학/098.png', page: 0 },
+{ file: '../img/완자 물리학/099.png', page: 0 },
+{ file: '../img/완자 물리학/100.png', page: 0 },
+{ file: '../img/완자 물리학/101.png', page: 0 },
+{ file: '../img/완자 물리학/102.png', page: 0 },
+{ file: '../img/완자 물리학/103.png', page: 0 },
+{ file: '../img/완자 물리학/104.png', page: 0 },
+{ file: '../img/완자 물리학/105.png', page: 0 },
+{ file: '../img/완자 물리학/106.png', page: 0 },
+{ file: '../img/완자 물리학/107.png', page: 0 },
+{ file: '../img/완자 물리학/108.png', page: 0 },
+{ file: '../img/완자 물리학/109.png', page: 0 },
+{ file: '../img/완자 물리학/110.png', page: 0 },
+{ file: '../img/완자 물리학/111.png', page: 0 },
+{ file: '../img/완자 물리학/112.png', page: 0 },
+{ file: '../img/완자 물리학/113.png', page: 0 },
+{ file: '../img/완자 물리학/114.png', page: 0 },
+{ file: '../img/완자 물리학/115.png', page: 0 },
+{ file: '../img/완자 물리학/116.png', page: 0 },
+{ file: '../img/완자 물리학/117.png', page: 0 },
+{ file: '../img/완자 물리학/118.png', page: 0 },
+{ file: '../img/완자 물리학/119.png', page: 0 },
+{ file: '../img/완자 물리학/120.png', page: 0 },
+{ file: '../img/완자 물리학/121.png', page: 0 },
+{ file: '../img/완자 물리학/122.png', page: 0 },
+{ file: '../img/완자 물리학/123.png', page: 0 },
+{ file: '../img/완자 물리학/124.png', page: 0 },
+{ file: '../img/완자 물리학/125.png', page: 0 },
+{ file: '../img/완자 물리학/126.png', page: 0 },
+{ file: '../img/완자 물리학/127.png', page: 0 },
+{ file: '../img/완자 물리학/128.png', page: 0 },
+{ file: '../img/완자 물리학/129.png', page: 0 },
+{ file: '../img/완자 물리학/130.png', page: 0 },
+{ file: '../img/완자 물리학/131.png', page: 0 },
+{ file: '../img/완자 물리학/132.png', page: 0 },
+{ file: '../img/완자 물리학/133.png', page: 0 },
+{ file: '../img/완자 물리학/134.png', page: 0 },
+{ file: '../img/완자 물리학/135.png', page: 0 },
+{ file: '../img/완자 물리학/136.png', page: 0 },
+{ file: '../img/완자 물리학/137.png', page: 0 },
+{ file: '../img/완자 물리학/138.png', page: 0 },
+{ file: '../img/완자 물리학/139.png', page: 0 },
+{ file: '../img/완자 물리학/140.png', page: 0 },
+{ file: '../img/완자 물리학/141.png', page: 0 },
+{ file: '../img/완자 물리학/142.png', page: 0 },
+{ file: '../img/완자 물리학/143.png', page: 0 },
+{ file: '../img/완자 물리학/144.png', page: 0 },
+{ file: '../img/완자 물리학/145.png', page: 0 },
+{ file: '../img/완자 물리학/146.png', page: 0 },
+{ file: '../img/완자 물리학/147.png', page: 0 },
+{ file: '../img/완자 물리학/148.png', page: 0 },
+{ file: '../img/완자 물리학/149.png', page: 0 },
+{ file: '../img/완자 물리학/150.png', page: 0 },
+{ file: '../img/완자 물리학/151.png', page: 0 },
+{ file: '../img/완자 물리학/152.png', page: 0 },
+{ file: '../img/완자 물리학/153.png', page: 0 },
+{ file: '../img/완자 물리학/154.png', page: 0 },
+{ file: '../img/완자 물리학/155.png', page: 0 },
+{ file: '../img/완자 물리학/156.png', page: 0 },
+{ file: '../img/완자 물리학/157.png', page: 0 },
+{ file: '../img/완자 물리학/158.png', page: 0 },
+{ file: '../img/완자 물리학/159.png', page: 0 },
+{ file: '../img/완자 물리학/160.png', page: 0 },
+{ file: '../img/완자 물리학/161.png', page: 0 },
+{ file: '../img/완자 물리학/162.png', page: 0 },
+{ file: '../img/완자 물리학/163.png', page: 0 },
+{ file: '../img/완자 물리학/164.png', page: 0 },
+{ file: '../img/완자 물리학/165.png', page: 0 },
+{ file: '../img/완자 물리학/166.png', page: 0 },
+{ file: '../img/완자 물리학/167.png', page: 0 },
+{ file: '../img/완자 물리학/168.png', page: 0 },
+{ file: '../img/완자 물리학/169.png', page: 0 },
+{ file: '../img/완자 물리학/170.png', page: 0 },
+{ file: '../img/완자 물리학/171.png', page: 0 },
+{ file: '../img/완자 물리학/172.png', page: 0 },
+{ file: '../img/완자 물리학/173.png', page: 0 },
+{ file: '../img/완자 물리학/174.png', page: 0 },
+{ file: '../img/완자 물리학/175.png', page: 0 },
+{ file: '../img/완자 물리학/176.png', page: 0 },
+{ file: '../img/완자 물리학/177.png', page: 0 },
+{ file: '../img/완자 물리학/178.png', page: 0 },
+{ file: '../img/완자 물리학/179.png', page: 0 },
+{ file: '../img/완자 물리학/180.png', page: 0 },
+{ file: '../img/완자 물리학/181.png', page: 0 },
+{ file: '../img/완자 물리학/182.png', page: 0 },
+{ file: '../img/완자 물리학/183.png', page: 0 },
+{ file: '../img/완자 물리학/184.png', page: 0 },
+{ file: '../img/완자 물리학/185.png', page: 0 },
+{ file: '../img/완자 물리학/186.png', page: 0 },
+{ file: '../img/완자 물리학/187.png', page: 0 },
+{ file: '../img/완자 물리학/188.png', page: 0 },
+{ file: '../img/완자 물리학/189.png', page: 0 },
+{ file: '../img/완자 물리학/190.png', page: 0 },
+{ file: '../img/완자 물리학/191.png', page: 0 },
+{ file: '../img/완자 물리학/192.png', page: 0 },
+{ file: '../img/완자 물리학/193.png', page: 0 },
+{ file: '../img/완자 물리학/194.png', page: 0 },
+{ file: '../img/완자 물리학/195.png', page: 0 },
+{ file: '../img/완자 물리학/196.png', page: 0 },
+{ file: '../img/완자 물리학/197.png', page: 0 },
+{ file: '../img/완자 물리학/198.png', page: 0 },
+{ file: '../img/완자 물리학/199.png', page: 0 },
+{ file: '../img/완자 물리학/200.png', page: 0 },
+{ file: '../img/완자 물리학/201.png', page: 0 },
+{ file: '../img/완자 물리학/202.png', page: 0 },
+{ file: '../img/완자 물리학/203.png', page: 0 },
+{ file: '../img/완자 물리학/204.png', page: 0 },
+{ file: '../img/완자 물리학/205.png', page: 0 },
+{ file: '../img/완자 물리학/206.png', page: 0 },
+{ file: '../img/완자 물리학/207.png', page: 0 },
+{ file: '../img/완자 물리학/208.png', page: 0 },
+{ file: '../img/완자 물리학/209.png', page: 0 },
+{ file: '../img/완자 물리학/210.png', page: 0 },
+{ file: '../img/완자 물리학/211.png', page: 0 },
+{ file: '../img/완자 물리학/212.png', page: 0 },
+{ file: '../img/완자 물리학/214.png', page: 0 },
+{ file: '../img/완자 물리학/215.png', page: 0 },
+{ file: '../img/완자 물리학/216.png', page: 0 },
+{ file: '../img/완자 물리학/217.png', page: 0 },
+{ file: '../img/완자 물리학/218.png', page: 0 },
+{ file: '../img/완자 물리학/219.png', page: 0 },
+{ file: '../img/완자 물리학/220.png', page: 0 },
+{ file: '../img/완자 물리학/221.png', page: 0 },
+{ file: '../img/완자 물리학/222.png', page: 0 },
+{ file: '../img/완자 물리학/223.png', page: 0 },
+{ file: '../img/완자 물리학/224.png', page: 0 },
+{ file: '../img/완자 물리학/225.png', page: 0 },
+{ file: '../img/완자 물리학/226.png', page: 0 },
+{ file: '../img/완자 물리학/227.png', page: 0 },
+{ file: '../img/완자 물리학/228.png', page: 0 },
+{ file: '../img/완자 물리학/229.png', page: 0 },
+{ file: '../img/완자 물리학/230.png', page: 0 },
+{ file: '../img/완자 물리학/231.png', page: 0 },
+{ file: '../img/완자 물리학/232.png', page: 0 },
+{ file: '../img/완자 물리학/233.png', page: 0 },
+{ file: '../img/완자 물리학/234.png', page: 0 },
+{ file: '../img/완자 물리학/235.png', page: 0 },
+{ file: '../img/완자 물리학/236.png', page: 0 },
+{ file: '../img/완자 물리학/237.png', page: 0 },
+{ file: '../img/완자 물리학/238.png', page: 0 },
+{ file: '../img/완자 물리학/239.png', page: 0 },
+{ file: '../img/완자 물리학/240.png', page: 0 },
+{ file: '../img/완자 물리학/241.png', page: 0 },
+{ file: '../img/완자 물리학/242.png', page: 0 },
+{ file: '../img/완자 물리학/243.png', page: 0 },
+{ file: '../img/완자 물리학/244.png', page: 0 },
+{ file: '../img/완자 물리학/245.png', page: 0 },
+{ file: '../img/완자 물리학/246.png', page: 0 },
+{ file: '../img/완자 물리학/247.png', page: 0 },
+{ file: '../img/완자 물리학/248.png', page: 0 },
+{ file: '../img/완자 물리학/249.png', page: 0 },
+{ file: '../img/완자 물리학/250.png', page: 0 },
+{ file: '../img/완자 물리학/251.png', page: 0 },
+{ file: '../img/완자 물리학/252.png', page: 0 },
+{ file: '../img/완자 물리학/253.png', page: 0 },
+{ file: '../img/완자 물리학/254.png', page: 0 },
+{ file: '../img/완자 물리학/255.png', page: 0 },
+{ file: '../img/완자 물리학/256.png', page: 0 },
+{ file: '../img/완자 물리학/257.png', page: 0 },
+{ file: '../img/완자 물리학/258.png', page: 0 },
+{ file: '../img/완자 물리학/259.png', page: 0 },
+{ file: '../img/완자 물리학/260.png', page: 0 },
+{ file: '../img/완자 물리학/261.png', page: 0 },
+{ file: '../img/완자 물리학/262.png', page: 0 },
+{ file: '../img/완자 물리학/263.png', page: 0 },
+{ file: '../img/완자 물리학/264.png', page: 0 },
+{ file: '../img/완자 물리학/265.png', page: 0 },
+{ file: '../img/완자 물리학/266.png', page: 0 },
+{ file: '../img/완자 물리학/267.png', page: 0 },
+{ file: '../img/완자 물리학/268.png', page: 0 },
+{ file: '../img/완자 물리학/269.png', page: 0 },
+{ file: '../img/완자 물리학/270.png', page: 0 },
+{ file: '../img/완자 물리학/271.png', page: 0 },
+{ file: '../img/완자 물리학/272.png', page: 0 },
+{ file: '../img/완자 물리학/273.png', page: 0 },
+{ file: '../img/완자 물리학/274.png', page: 0 },
+{ file: '../img/완자 물리학/275.png', page: 0 },
+{ file: '../img/완자 물리학/276.png', page: 0 },
+{ file: '../img/완자 물리학/277.png', page: 0 },
+{ file: '../img/완자 물리학/278.png', page: 0 },
+{ file: '../img/완자 물리학/279.png', page: 0 },
+{ file: '../img/완자 물리학/280.png', page: 0 },
+{ file: '../img/완자 물리학/281.png', page: 0 },
+{ file: '../img/완자 물리학/282.png', page: 0 },
+{ file: '../img/완자 물리학/283.png', page: 0 },
+{ file: '../img/완자 물리학/284.png', page: 0 },
+{ file: '../img/완자 물리학/285.png', page: 0 },
+{ file: '../img/완자 물리학/286.png', page: 0 },
+{ file: '../img/완자 물리학/287.png', page: 0 },
+{ file: '../img/완자 물리학/288.png', page: 0 },
+{ file: '../img/완자 물리학/289.png', page: 0 },
+{ file: '../img/완자 물리학/290.png', page: 0 },
+{ file: '../img/완자 물리학/291.png', page: 0 },
+{ file: '../img/완자 물리학/292.png', page: 0 },
+{ file: '../img/완자 물리학/293.png', page: 0 },
+{ file: '../img/완자 물리학/294.png', page: 0 },
+{ file: '../img/완자 물리학/295.png', page: 0 },
+{ file: '../img/완자 물리학/296.png', page: 0 },
+{ file: '../img/완자 물리학/297.png', page: 0 },
+{ file: '../img/완자 물리학/298.png', page: 0 },
+{ file: '../img/완자 물리학/299.png', page: 0 },
+{ file: '../img/완자 물리학/300.png', page: 0 },
+{ file: '../img/완자 물리학/301.png', page: 0 },
+{ file: '../img/완자 물리학/302.png', page: 0 },
+{ file: '../img/완자 물리학/303.png', page: 0 },
+{ file: '../img/완자 물리학/304.png', page: 0 },
+{ file: '../img/완자 물리학/305.png', page: 0 },
+{ file: '../img/완자 물리학/306.png', page: 0 },
+{ file: '../img/완자 물리학/307.png', page: 0 },
+{ file: '../img/완자 물리학/308.png', page: 0 },
+{ file: '../img/완자 물리학/309.png', page: 0 },
+{ file: '../img/완자 물리학/310.png', page: 0 },
+{ file: '../img/완자 물리학/311.png', page: 0 },
+{ file: '../img/완자 물리학/312.png', page: 0 },
+{ file: '../img/완자 물리학/313.png', page: 0 },
+{ file: '../img/완자 물리학/314.png', page: 0 },
+{ file: '../img/완자 물리학/315.png', page: 0 },
+{ file: '../img/완자 물리학/316.png', page: 0 },
+{ file: '../img/완자 물리학/317.png', page: 0 },
+{ file: '../img/완자 물리학/318.png', page: 0 },
+{ file: '../img/완자 물리학/319.png', page: 0 },
+{ file: '../img/완자 물리학/320.png', page: 0 },
+{ file: '../img/완자 물리학/321.png', page: 0 },
+{ file: '../img/완자 물리학/322.png', page: 0 },
+{ file: '../img/완자 물리학/323.png', page: 0 },
+{ file: '../img/완자 물리학/324.png', page: 0 },
+{ file: '../img/완자 물리학/325.png', page: 0 },
+{ file: '../img/완자 물리학/326.png', page: 0 },
+{ file: '../img/완자 물리학/327.png', page: 0 },
+{ file: '../img/완자 물리학/328.png', page: 0 },
+{ file: '../img/완자 물리학/329.png', page: 0 },
+{ file: '../img/완자 물리학/330.png', page: 0 },
+{ file: '../img/완자 물리학/331.png', page: 0 },
+{ file: '../img/완자 물리학/332.png', page: 0 },
+{ file: '../img/완자 물리학/333.png', page: 0 },
+{ file: '../img/완자 물리학/334.png', page: 0 },
+{ file: '../img/완자 물리학/335.png', page: 0 },
+{ file: '../img/완자 물리학/336.png', page: 0 },
+{ file: '../img/완자 물리학/337.png', page: 0 },
+{ file: '../img/완자 물리학/338.png', page: 0 },
+{ file: '../img/완자 물리학/339.png', page: 0 },
+{ file: '../img/완자 물리학/340.png', page: 0 },
+{ file: '../img/완자 물리학/341.png', page: 0 },
+{ file: '../img/완자 물리학/342.png', page: 0 },
+{ file: '../img/완자 물리학/343.png', page: 0 },
+{ file: '../img/완자 물리학/344.png', page: 0 },
+{ file: '../img/완자 물리학/345.png', page: 0 },
+{ file: '../img/완자 물리학/346.png', page: 0 },
+{ file: '../img/완자 물리학/347.png', page: 0 },
+{ file: '../img/완자 물리학/348.png', page: 0 },
+{ file: '../img/완자 물리학/349.png', page: 0 },
+{ file: '../img/완자 물리학/350.png', page: 0 },
+{ file: '../img/완자 물리학/351.png', page: 0 },
+{ file: '../img/완자 물리학/352.png', page: 0 },
+{ file: '../img/완자 물리학/353.png', page: 0 },
+{ file: '../img/완자 물리학/354.png', page: 0 },
+{ file: '../img/완자 물리학/355.png', page: 0 },
+{ file: '../img/완자 물리학/356.png', page: 0 },
+{ file: '../img/완자 물리학/357.png', page: 0 },
+{ file: '../img/완자 물리학/358.png', page: 0 },
+{ file: '../img/완자 물리학/359.png', page: 0 },
+{ file: '../img/완자 물리학/360.png', page: 0 },
+{ file: '../img/완자 물리학/361.png', page: 0 },
+{ file: '../img/완자 물리학/362.png', page: 0 },
+{ file: '../img/완자 물리학/363.png', page: 0 },
+{ file: '../img/완자 물리학/364.png', page: 0 },
+{ file: '../img/완자 물리학/365.png', page: 0 },
+{ file: '../img/완자 물리학/366.png', page: 0 },
+{ file: '../img/완자 물리학/367.png', page: 0 },
+{ file: '../img/완자 물리학/368.png', page: 0 },
+{ file: '../img/완자 물리학/369.png', page: 0 },
+{ file: '../img/완자 물리학/370.png', page: 0 },
+{ file: '../img/완자 물리학/371.png', page: 0 },
+{ file: '../img/완자 물리학/372.png', page: 0 },
+{ file: '../img/완자 물리학/373.png', page: 0 },
+{ file: '../img/완자 물리학/374.png', page: 0 },
+{ file: '../img/완자 물리학/375.png', page: 0 },
+{ file: '../img/완자 물리학/376.png', page: 0 },
+{ file: '../img/완자 물리학/377.png', page: 0 },
+{ file: '../img/완자 물리학/378.png', page: 0 },
+{ file: '../img/완자 물리학/379.png', page: 0 },
+{ file: '../img/완자 물리학/380.png', page: 0 },
+{ file: '../img/완자 물리학/381.png', page: 0 },
+{ file: '../img/완자 물리학/382.png', page: 0 },
+{ file: '../img/완자 물리학/383.png', page: 0 },
+{ file: '../img/완자 물리학/384.png', page: 0 },
+{ file: '../img/완자 물리학/385.png', page: 0 },
+{ file: '../img/완자 물리학/386.png', page: 0 },
+{ file: '../img/완자 물리학/387.png', page: 0 },
+{ file: '../img/완자 물리학/388.png', page: 0 },
+{ file: '../img/완자 물리학/389.png', page: 0 },
+{ file: '../img/완자 물리학/390.png', page: 0 },
+{ file: '../img/완자 물리학/391.png', page: 0 },
+{ file: '../img/완자 물리학/392.png', page: 0 },
+{ file: '../img/완자 물리학/393.png', page: 0 },
+{ file: '../img/완자 물리학/394.png', page: 0 },
+{ file: '../img/완자 물리학/395.png', page: 0 },
+{ file: '../img/완자 물리학/396.png', page: 0 },
+{ file: '../img/완자 물리학/397.png', page: 0 },
+{ file: '../img/완자 물리학/398.png', page: 0 },
+{ file: '../img/완자 물리학/399.png', page: 0 },
+{ file: '../img/완자 물리학/400.png', page: 0 },
+{ file: '../img/완자 물리학/401.png', page: 0 },
+{ file: '../img/완자 물리학/402.png', page: 0 },
+{ file: '../img/완자 물리학/403.png', page: 0 },
+{ file: '../img/완자 물리학/404.png', page: 0 },
+{ file: '../img/완자 물리학/405.png', page: 0 },
+{ file: '../img/완자 물리학/406.png', page: 0 },
+{ file: '../img/완자 물리학/407.png', page: 0 },
+{ file: '../img/완자 물리학/408.png', page: 0 },
+{ file: '../img/완자 물리학/409.png', page: 0 },
+{ file: '../img/완자 물리학/410.png', page: 0 },
+{ file: '../img/완자 물리학/411.png', page: 0 },
+{ file: '../img/완자 물리학/412.png', page: 0 },
+{ file: '../img/완자 물리학/413.png', page: 0 },
+{ file: '../img/완자 물리학/414.png', page: 0 },
+{ file: '../img/완자 물리학/415.png', page: 0 },
+{ file: '../img/완자 물리학/416.png', page: 0 },
+{ file: '../img/완자 물리학/417.png', page: 0 },
+{ file: '../img/완자 물리학/418.png', page: 0 },
+{ file: '../img/완자 물리학/419.png', page: 0 },
+{ file: '../img/완자 물리학/420.png', page: 0 },
+{ file: '../img/완자 물리학/421.png', page: 0 },
+{ file: '../img/완자 물리학/422.png', page: 0 },
+{ file: '../img/완자 물리학/423.png', page: 0 },
+{ file: '../img/완자 물리학/424.png', page: 0 },
+{ file: '../img/완자 물리학/425.png', page: 0 },
+{ file: '../img/완자 물리학/426.png', page: 0 },
+{ file: '../img/완자 물리학/427.png', page: 0 },
+{ file: '../img/완자 물리학/428.png', page: 0 },
+{ file: '../img/완자 물리학/429.png', page: 0 },
+{ file: '../img/완자 물리학/430.png', page: 0 },
+{ file: '../img/완자 물리학/431.png', page: 0 },
+{ file: '../img/완자 물리학/432.png', page: 0 },
+{ file: '../img/완자 물리학/433.png', page: 0 },
+{ file: '../img/완자 물리학/434.png', page: 0 },
+{ file: '../img/완자 물리학/435.png', page: 0 },
+{ file: '../img/완자 물리학/436.png', page: 0 },
+{ file: '../img/완자 물리학/437.png', page: 0 },
+{ file: '../img/완자 물리학/438.png', page: 0 },
+{ file: '../img/완자 물리학/439.png', page: 0 },
+{ file: '../img/완자 물리학/440.png', page: 0 },
+{ file: '../img/완자 물리학/441.png', page: 0 },
+{ file: '../img/완자 물리학/442.png', page: 0 },
+{ file: '../img/완자 물리학/443.png', page: 0 },
+{ file: '../img/완자 물리학/444.png', page: 0 },
+{ file: '../img/완자 물리학/445.png', page: 0 },
+{ file: '../img/완자 물리학/446.png', page: 0 },
+{ file: '../img/완자 물리학/447.png', page: 0 },
+{ file: '../img/완자 물리학/448.png', page: 0 },
+{ file: '../img/완자 물리학/449.png', page: 0 },
+{ file: '../img/완자 물리학/450.png', page: 0 },
+{ file: '../img/완자 물리학/451.png', page: 0 },
+{ file: '../img/완자 물리학/452.png', page: 0 },
+{ file: '../img/완자 물리학/453.png', page: 0 },
+{ file: '../img/완자 물리학/454.png', page: 0 },
+{ file: '../img/완자 물리학/455.png', page: 0 },
+{ file: '../img/완자 물리학/456.png', page: 0 },
+{ file: '../img/완자 물리학/457.png', page: 0 },
+{ file: '../img/완자 물리학/458.png', page: 0 },
+{ file: '../img/완자 물리학/459.png', page: 0 },
+{ file: '../img/완자 물리학/460.png', page: 0 },
+{ file: '../img/완자 물리학/461.png', page: 0 },
+{ file: '../img/완자 물리학/462.png', page: 0 },
+{ file: '../img/완자 물리학/463.png', page: 0 },
+{ file: '../img/완자 물리학/464.png', page: 0 },
+{ file: '../img/완자 물리학/465.png', page: 0 },
+{ file: '../img/완자 물리학/466.png', page: 0 },
+{ file: '../img/완자 물리학/467.png', page: 0 },
+{ file: '../img/완자 물리학/468.png', page: 0 },
+{ file: '../img/완자 물리학/469.png', page: 0 },
+{ file: '../img/완자 물리학/470.png', page: 0 },
+{ file: '../img/완자 물리학/471.png', page: 0 },
+{ file: '../img/완자 물리학/472.png', page: 0 },
+{ file: '../img/완자 물리학/473.png', page: 0 },
+{ file: '../img/완자 물리학/474.png', page: 0 },
+{ file: '../img/완자 물리학/475.png', page: 0 },
+{ file: '../img/완자 물리학/476.png', page: 0 },
+{ file: '../img/완자 물리학/477.png', page: 0 },
+{ file: '../img/완자 물리학/478.png', page: 0 },
+{ file: '../img/완자 물리학/479.png', page: 0 },
+{ file: '../img/완자 물리학/480.png', page: 0 },
+{ file: '../img/완자 물리학/481.png', page: 0 },
+{ file: '../img/완자 물리학/482.png', page: 0 },
+{ file: '../img/완자 물리학/483.png', page: 0 },
+{ file: '../img/완자 물리학/484.png', page: 0 },
+{ file: '../img/완자 물리학/485.png', page: 0 },
+{ file: '../img/완자 물리학/486.png', page: 0 },
+{ file: '../img/완자 물리학/487.png', page: 0 },
+{ file: '../img/완자 물리학/488.png', page: 0 },
+{ file: '../img/완자 물리학/489.png', page: 0 },
+{ file: '../img/완자 물리학/490.png', page: 0 },
+{ file: '../img/완자 물리학/491.png', page: 0 },
+{ file: '../img/완자 물리학/492.png', page: 0 },
+{ file: '../img/완자 물리학/493.png', page: 0 },
+{ file: '../img/완자 물리학/494.png', page: 0 },
+{ file: '../img/완자 물리학/495.png', page: 0 },
+{ file: '../img/완자 물리학/496.png', page: 0 },
+{ file: '../img/완자 물리학/497.png', page: 0 },
+{ file: '../img/완자 물리학/498.png', page: 0 },
+{ file: '../img/완자 물리학/499.png', page: 0 },
+{ file: '../img/완자 물리학/500.png', page: 0 },
+{ file: '../img/완자 물리학/501.png', page: 0 },
+{ file: '../img/완자 물리학/502.png', page: 0 },
+{ file: '../img/완자 물리학/503.png', page: 0 },
+{ file: '../img/완자 물리학/504.png', page: 0 },
+{ file: '../img/완자 물리학/505.png', page: 0 },
+{ file: '../img/완자 물리학/506.png', page: 0 },
+{ file: '../img/완자 물리학/507.png', page: 0 },
+{ file: '../img/완자 물리학/508.png', page: 0 },
+{ file: '../img/완자 물리학/509.png', page: 0 },
+{ file: '../img/완자 물리학/510.png', page: 0 },
+{ file: '../img/완자 물리학/511.png', page: 0 },
+{ file: '../img/완자 물리학/512.png', page: 0 },
+{ file: '../img/완자 물리학/513.png', page: 0 },
+{ file: '../img/완자 물리학/514.png', page: 0 },
+{ file: '../img/완자 물리학/515.png', page: 0 },
+{ file: '../img/완자 물리학/516.png', page: 0 },
+{ file: '../img/완자 물리학/517.png', page: 0 },
+{ file: '../img/완자 물리학/518.png', page: 0 },
+{ file: '../img/완자 물리학/519.png', page: 0 },
+{ file: '../img/완자 물리학/520.png', page: 0 },
+{ file: '../img/완자 물리학/521.png', page: 0 },
+{ file: '../img/완자 물리학/522.png', page: 0 },
+{ file: '../img/완자 물리학/523.png', page: 0 },
+{ file: '../img/완자 물리학/524.png', page: 0 },
+{ file: '../img/완자 물리학/525.png', page: 0 },
+{ file: '../img/완자 물리학/526.png', page: 0 },
+{ file: '../img/완자 물리학/527.png', page: 0 },
+{ file: '../img/완자 물리학/528.png', page: 0 },
+{ file: '../img/완자 물리학/529.png', page: 0 },
+{ file: '../img/완자 물리학/530.png', page: 0 },
+{ file: '../img/완자 물리학/531.png', page: 0 },
+{ file: '../img/완자 물리학/532.png', page: 0 },
+{ file: '../img/완자 물리학/533.png', page: 0 },
+{ file: '../img/완자 물리학/534.png', page: 0 },
+{ file: '../img/완자 물리학/535.png', page: 0 },
+{ file: '../img/완자 물리학/536.png', page: 0 },
+{ file: '../img/완자 물리학/537.png', page: 0 },
+{ file: '../img/완자 물리학/538.png', page: 0 },
+{ file: '../img/완자 물리학/539.png', page: 0 },
+{ file: '../img/완자 물리학/540.png', page: 0 },
+{ file: '../img/완자 물리학/541.png', page: 0 },
+{ file: '../img/완자 물리학/542.png', page: 0 },
+{ file: '../img/완자 물리학/543.png', page: 0 },
+{ file: '../img/완자 물리학/544.png', page: 0 },
+{ file: '../img/완자 물리학/545.png', page: 0 },
+{ file: '../img/완자 물리학/546.png', page: 0 },
+{ file: '../img/완자 물리학/547.png', page: 0 },
+{ file: '../img/완자 물리학/548.png', page: 0 },
+{ file: '../img/완자 물리학/549.png', page: 0 },
+{ file: '../img/완자 물리학/550.png', page: 0 },
+{ file: '../img/완자 물리학/551.png', page: 0 },
+{ file: '../img/완자 물리학/552.png', page: 0 },
+{ file: '../img/완자 물리학/553.png', page: 0 },
+{ file: '../img/완자 물리학/554.png', page: 0 },
+{ file: '../img/완자 물리학/555.png', page: 0 },
+{ file: '../img/완자 물리학/556.png', page: 0 }
+];
+
+// ══════════════════════════════════════════════
+
+const selected = new Set();
+let filter = 'all';
+let userRole = 'user';
+const scrappedFiles = new Set();
+
+document.getElementById('bookTitle').textContent = BOOK_TITLE;
+document.getElementById('problemCount').textContent = `${IMAGES.length}개`;
+
+// ── 유저 권한 및 기존 스크랩 로드 ──
+async function initViewerUser() {
+  try {
+    const userRes = await fetch('/api/user_info');
+    const userData = await userRes.json();
+    if (userData.logged_in) {
+      userRole = userData.role || 'user';
+    }
+    
+    // 일반 유저인 경우 합치기 버튼 숨김
+    if (userRole !== 'admin') {
+      const mergeBtn = document.getElementById('mergeBtn');
+      if (mergeBtn) mergeBtn.style.display = 'none';
+    }
+
+    // 스크랩 데이터 로드
+    const folderName = BOOK_FOLDER || (IMAGES[0] ? IMAGES[0].file.split('/')[2] : '');
+    if (folderName) {
+      const scrapsRes = await fetch(`/api/scraps?book_folder=${encodeURIComponent(folderName)}`);
+      const scrapsData = await scrapsRes.json();
+      (scrapsData.scraps || []).forEach(s => {
+        const fname = s.image_file.split('/').pop();
+        scrappedFiles.add(fname);
+      });
+    }
+  } catch (e) {
+    console.error("뷰어 초기화 실패", e);
+  }
+  renderGrid();
+}
+
+function renderGrid() {
+  const grid = document.getElementById('problemGrid');
+  grid.innerHTML = '';
+
+  const list = IMAGES
+    .map((p, i) => ({ ...p, i }))
+    .filter(p => filter === 'all' || selected.has(p.i));
+
+  if (!list.length) {
+    grid.innerHTML = `<div class="loading" style="grid-column:span 4">
+      <div style="font-size:28px;margin-bottom:8px">🔍</div>
+      <div style="color:#6b7280;font-size:14px">선택된 문제가 없습니다</div>
+    </div>`;
+    return;
+  }
+
+  list.forEach(({ file, page, i }) => {
+    const card = document.createElement('div');
+    card.className = `problem-card${selected.has(i) ? ' selected' : ''}`;
+    card.id = `card-${i}`;
+    card.onclick = (e) => { 
+      if (!e.target.closest('.btn-split') && !e.target.closest('.btn-delete-img') && !e.target.closest('.btn-scrap')) {
+        toggle(i); 
+      }
+    };
+
+    const fileNameOnly = file.split('/').pop();
+    const isScrapped = scrappedFiles.has(fileNameOnly);
+
+    let bottomControlsHtml = '';
+    if (userRole === 'admin') {
+      bottomControlsHtml = `
+        <button class="btn-split" id="splitBtn-${i}" onclick="event.stopPropagation(); splitProblem(${i})">✂️ 자르기</button>
+        <button class="btn-delete-img" onclick="event.stopPropagation(); deleteProblem(${i})">🗑️ 문제 삭제</button>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="card-page">No.${i + 1}</span>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="btn-scrap ${isScrapped ? 'active' : ''}" onclick="event.stopPropagation(); toggleScrap(${i}, this)">
+            ${isScrapped ? '⭐ 스크랩됨' : '☆ 스크랩'}
+          </button>
+          <div class="card-check">${selected.has(i) ? '✓' : ''}</div>
+        </div>
+      </div>
+      <div class="card-img">
+        <img src="${file}" alt="문제 ${i+1}"
+          onerror="this.parentElement.innerHTML='<div style=padding:16px;text-align:center;color:#9ca3af;font-size:12px>이미지 없음</div>'" />
+      </div>
+      ${bottomControlsHtml}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ── 개별 스크랩 토글 ──
+async function toggleScrap(i, btn) {
+  const file = IMAGES[i].file;
+  const fileNameOnly = file.split('/').pop();
+  const folderName = BOOK_FOLDER || file.split('/')[2] || 'book';
+  const title = BOOK_TITLE || folderName;
+
+  const isScrapped = scrappedFiles.has(fileNameOnly);
+
+  if (isScrapped) {
+    // 스크랩 해제
+    try {
+      await fetch('/api/scraps', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book_folder: folderName, image_file: fileNameOnly })
+      });
+      scrappedFiles.delete(fileNameOnly);
+      btn.classList.remove('active');
+      btn.textContent = '☆ 스크랩';
+      showToast('스크랩이 해제되었습니다');
+    } catch (e) {
+      showToast('스크랩 해제 중 오류가 발생했습니다');
+    }
+  } else {
+    // 스크랩 추가
+    try {
+      await fetch('/api/scraps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          book_folder: folderName,
+          book_title: title,
+          items: [{ file: file, num: i + 1 }]
+        })
+      });
+      scrappedFiles.add(fileNameOnly);
+      btn.classList.add('active');
+      btn.textContent = '⭐ 스크랩됨';
+      showToast('⭐ 스크랩 보관함에 저장되었습니다');
+    } catch (e) {
+      showToast('스크랩 저장 중 오류가 발생했습니다');
+    }
+  }
+}
+
+// ── 선택 문제 일괄 스크랩 ──
+async function scrapSelectedProblems() {
+  if (!selected.size) {
+    showToast('스크랩할 문제를 먼저 선택해 주세요!');
+    return;
+  }
+
+  const folderName = BOOK_FOLDER || (IMAGES[0] ? IMAGES[0].file.split('/')[2] : 'book');
+  const title = BOOK_TITLE || folderName;
+
+  const items = [...selected].map(idx => ({
+    file: IMAGES[idx].file,
+    num: idx + 1
+  }));
+
+  try {
+    const res = await fetch('/api/scraps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        book_folder: folderName,
+        book_title: title,
+        items: items
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      items.forEach(it => {
+        scrappedFiles.add(it.file.split('/').pop());
+      });
+      renderGrid();
+      showToast(`⭐ 선택한 ${items.length}개 문제가 스크랩 보관함에 저장되었습니다!`);
+    } else {
+      showToast('스크랩 실패: ' + (data.error || '오류 발생'));
+    }
+  } catch (e) {
+    showToast('스크랩 저장 중 오류가 발생했습니다');
+  }
+}
+
+// ── 관리자 문제 사진 삭제 ──
+async function deleteProblem(i) {
+  const folder = BOOK_FOLDER;
+  if (!folder) {
+    alert('⚠️ BOOK_FOLDER 변수가 설정되지 않았습니다.');
+    return;
+  }
+  const num = i + 1;
+  const filename = IMAGES[i].file.split('/').pop();
+
+  const ok = confirm(`${num}번 문제 사진(${filename})을 삭제하시겠습니까?\n삭제 후 이후 문제 번호가 앞으로 당겨지며 되돌릴 수 없습니다.`);
+  if (!ok) return;
+
+  document.getElementById('splitOverlay').classList.add('open');
+  document.querySelector('.split-msg').textContent = '🗑️ 이미지 삭제 중...';
+
+  sessionStorage.setItem('splitScrollY', document.querySelector('.main').scrollTop);
+
+  try {
+    const delRes = await fetch(`/api/run/delete_sync?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`);
+    if (!delRes.ok) throw new Error(`삭제 오류: ${delRes.status}`);
+
+    const buildRes = await fetch(`/api/run/build_sync?folder=${encodeURIComponent(folder)}`);
+    if (!buildRes.ok) throw new Error(`에셋 생성 오류: ${buildRes.status}`);
+  } catch (e) {
+    document.getElementById('splitOverlay').classList.remove('open');
+    alert('오류: ' + e.message);
+    return;
+  }
+
+  location.reload();
+}
+
+
+function toggle(i) {
+  if (selected.has(i)) {
+    selected.delete(i);
+    showToast('문제가 해제되었습니다');
+  } else {
+    selected.add(i);
+    showToast('문제가 선택되었습니다');
+  }
+  const card = document.getElementById(`card-${i}`);
+  if (card) {
+    card.classList.toggle('selected', selected.has(i));
+    card.querySelector('.card-check').textContent = selected.has(i) ? '✓' : '';
+  }
+  if (filter === 'selected') renderGrid();
+  updateSidebar();
+}
+
+function updateSidebar() {
+  document.getElementById('countBadge').textContent = selected.size;
+  const cart = document.getElementById('cartList');
+
+  // 합치기 버튼 활성화 조건: 2개 이상 + 연속 번호
+  const mergeBtn = document.getElementById('mergeBtn');
+  if (selected.size >= 2) {
+    const sortedNums = [...selected].map(i => i + 1).sort((a, b) => a - b);
+    const isConsecutive = sortedNums.every((n, idx) => idx === 0 || n === sortedNums[idx - 1] + 1);
+    mergeBtn.disabled = !isConsecutive;
+    mergeBtn.title = isConsecutive ? `${sortedNums[0]}번~${sortedNums.at(-1)}번 합치기` : '연속된 번호만 합친 수 있습니다';
+  } else {
+    mergeBtn.disabled = true;
+    mergeBtn.title = '2개 이상 선택 후 합치기';
+  }
+
+  if (!selected.size) {
+    cart.innerHTML = `<div class="cart-empty">
+      <div class="cart-empty-icon">📋</div>
+      <div>문제를 선택하면<br>여기에 표시됩니다</div>
+    </div>`;
+    return;
+  }
+  cart.innerHTML = '';
+  [...selected].forEach((i, n) => {
+    const el = document.createElement('div');
+    el.className = 'cart-item';
+    el.innerHTML = `
+      <span class="cart-item-label">${n+1}번</span>
+      <button class="cart-remove" onclick="toggle(${i})">✕</button>
+      <img src="${IMAGES[i].file}" />
+    `;
+    cart.appendChild(el);
+  });
+}
+
+function setFilter(type, btn) {
+  filter = type;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderGrid();
+}
+
+// ── 이미지 즉시 합치기 ──
+async function mergeProblem() {
+  const folder = BOOK_FOLDER;
+  if (!folder) {
+    alert('⚠️ BOOK_FOLDER 변수가 설정되지 않았습니다.\n book_assets.py로 에셋을 재생성해 주세요.');
+    return;
+  }
+  const sortedIndices = [...selected].sort((a, b) => a - b);
+  const displayNums = sortedIndices.map(i => i + 1);
+  const start = displayNums[0];
+  const end   = displayNums.at(-1);
+
+  const ok = confirm(`${start}번 ~ ${end}번 문제를 합치시겠습니까?\n이후 번호가 앞으로 당겨집니다. 되돌릴 수 없습니다.`);
+  if (!ok) return;
+
+  document.getElementById('splitOverlay').classList.add('open');
+  document.querySelector('.split-msg').textContent = '🔗 합치는 중...';
+
+  sessionStorage.setItem('splitScrollY', document.querySelector('.main').scrollTop);
+
+  const filenames = sortedIndices.map(i => IMAGES[i].file.split('/').pop()).join(',');
+
+  try {
+    const mergeRes = await fetch(
+      `/api/run/merge_sync?folder=${encodeURIComponent(folder)}&files=${encodeURIComponent(filenames)}`
+    );
+    if (!mergeRes.ok) throw new Error(`합치기 오류: ${mergeRes.status}`);
+
+    const buildRes = await fetch(`/api/run/build_sync?folder=${encodeURIComponent(folder)}`);
+    if (!buildRes.ok) throw new Error(`에셋 생성 오류: ${buildRes.status}`);
+  } catch (e) {
+    document.getElementById('splitOverlay').classList.remove('open');
+    alert('오류: ' + e.message);
+    return;
+  }
+
+  location.reload();
+}
+
+// ── 이미지 즉시 분할 ──
+async function splitProblem(i) {
+  const folder = BOOK_FOLDER;
+  if (!folder) {
+    alert('⚠️ BOOK_FOLDER 변수가 설정되지 않았습니다.\n book_assets.py로 에셋을 재생성해 주세요.');
+    return;
+  }
+  const num = i + 1;
+  const filename = IMAGES[i].file.split('/').pop();
+  const ok = confirm(`${num}번 문제를 자르시겠습니까?\n한번 자르면 되돌릴 수 없습니다.`);
+  if (!ok) return;
+
+  // 오버레이 표시
+  document.getElementById('splitOverlay').classList.add('open');
+
+  // 스크롤 위치 저장
+  sessionStorage.setItem('splitScrollY', document.querySelector('.main').scrollTop);
+
+  try {
+    // 1단계: 분할
+    const splitRes = await fetch(`/api/run/split_sync?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`);
+    if (!splitRes.ok) throw new Error(`분할 오류: ${splitRes.status}`);
+
+    // 2단계: 에셋 재생성
+    const buildRes = await fetch(`/api/run/build_sync?folder=${encodeURIComponent(folder)}`);
+    if (!buildRes.ok) throw new Error(`에셋 생성 오류: ${buildRes.status}`);
+
+  } catch (e) {
+    document.getElementById('splitOverlay').classList.remove('open');
+    alert('오류: ' + e.message);
+    return;
+  }
+
+  // 페이지 새로고침
+  location.reload();
+}
+
+// 페이지 로드 시 스크롤 복원
+(function restoreScroll() {
+  const savedY = sessionStorage.getItem('splitScrollY');
+  if (savedY !== null) {
+    sessionStorage.removeItem('splitScrollY');
+    // 이미지 렌더 후 스크롤 이동
+    requestAnimationFrame(() => {
+      setTimeout(() => { document.querySelector('.main').scrollTop = Number(savedY); }, 100);
+    });
+  }
+})();
+
+
+
+let isWorkbookMode = false;
+
+function toggleWorkbookMode() {
+  isWorkbookMode = !isWorkbookMode;
+  const btn = document.getElementById('workbookBtn');
+  btn.classList.toggle('active', isWorkbookMode);
+  showToast(isWorkbookMode ? '📝 오답노트 모드 ON — PDF 생성 시 적용됩니다' : '시험지 모드로 돌아갔습니다');
+}
+
+async function printExam() {
+  if (!selected.size) { showToast('문제를 먼저 선택해 주세요!'); return; }
+  if (isWorkbookMode) { printExamWorkbook(); return; }
+
+  // 1. 이미지 데이터 로드 및 비율 분석 (세로 길이 판별)
+  const items = await Promise.all([...selected].map(async (idx, n) => {
+    const imgData = IMAGES[idx];
+    const ratio = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img.height / img.width);
+      img.onerror = () => resolve(1);
+      img.src = imgData.file;
+    });
+    return {
+      n: n + 1,
+      file: imgData.file,
+      // 가로보다 세로가 1.15배 이상 길면 긴 문제로 판정 (필요시 수치 조절)
+      isLong: ratio > 1.15 
+    };
+  }));
+
+  const savedTemplate = localStorage.getItem('examTemplate');
+  let T = null;
+  if (savedTemplate) {
+    try { T = JSON.parse(savedTemplate); } catch(e) {}
+  }
+  if (!T) {
+    T = {
+      paperSize:'A4', orientation:'portrait', margin:'normal', columns:2,
+      font:"'Malgun Gothic', sans-serif", bgColor:'#ffffff', bgImage:'',
+      showHeader:true, headerTitle:BOOK_TITLE, headerSubtitle:'', headerRight:'이름 : _________________',
+      logoData:'', logoHeight:36, headerLineColor:'#000000', headerLineWidth:'2px', titleSize:22,
+      numColor:'#000000', numSize:22, numStyle:'dot', problemGap:20, imgBgColor:'transparent', imgFit:'contain',
+      centerLineStyle:'dashed', centerLineColor:'#999999',
+      showFooter:false, footerLeft:'', footerCenter:'- 1 -', footerRight:''
+    };
+  }
+
+  const marginMm = {narrow:'8mm', normal:'12mm', wide:'18mm'}[T.margin] || '12mm';
+  const paperStr = T.paperSize + (T.orientation === 'landscape' ? ' landscape' : '');
+  const bgRule = T.bgImage ? `background-image: url('${T.bgImage}'); background-size: cover;` : `background: ${T.bgColor};`;
+  const paperWidth = T.orientation === 'landscape' ? '297mm' : '210mm';
+  const paperHeight = T.orientation === 'landscape' ? '210mm' : '297mm';
+
+  const getNum = (n, style) => {
+    const circles = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+    if (style==='paren') return n + ')';
+    if (style==='bracket') return '[' + n + ']';
+    if (style==='circle') return circles[n-1] || n + '.';
+    return n + '.';
+  };
+
+  const css = `
+    @page { size: ${paperStr}; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: ${T.font}; background: #525659; }
+    
+    .page {
+      width: ${paperWidth}; height: ${paperHeight}; ${bgRule}
+      margin: 20px auto; padding: ${marginMm};
+      position: relative; page-break-after: always;
+      display: flex; flex-direction: column;
+    }
+    @media print {
+      body { background: white; }
+      .page { margin: 0; box-shadow: none; width: ${paperWidth}; height: ${paperHeight}; }
+    }
+
+    .pg-header {
+      display: ${T.showHeader ? 'flex' : 'none'}; justify-content: space-between; align-items: flex-end;
+      border-bottom: ${T.headerLineWidth} solid ${T.headerLineColor}; padding-bottom: 6px; margin-bottom: 15px;
+    }
+    .pg-header-left { display: flex; align-items: center; gap: 8px; }
+    .pg-title { font-size: ${T.titleSize}px; font-weight: 900; }
+    .pg-subtitle { font-size: 12px; color: #555; }
+    .pg-logo { height: ${T.logoHeight}px; display: ${T.logoData ? 'block' : 'none'}; }
+
+    /* 2단 구성 컨테이너 */
+    .exam-body {
+      flex: 1; 
+      display: flex; 
+      gap: 30px; /* 좌우 단 사이의 간격 */
+      position: relative;
+    }
+
+    /* 중앙 점선 */
+    .exam-body::after {
+      content: ''; position: absolute;
+      top: 0; bottom: 0; left: 50%;
+      display: ${T.columns === 2 && T.centerLineStyle !== 'none' ? 'block' : 'none'};
+      border-left: 2px ${T.centerLineStyle} ${T.centerLineColor}; transform: translateX(-50%);
+    }
+
+    /* 왼쪽/오른쪽 단 (Column) */
+    .column {
+      flex: 1; 
+      display: grid;
+      grid-template-rows: 1fr 1fr; /* 각 단은 2개의 슬롯을 가짐 */
+      gap: ${T.problemGap}px; /* 문제 위아래 간격 */
+      width: ${T.columns === 1 ? '100%' : '50%'};
+    }
+
+    /* 개별 문제 영역 */
+    .item {
+      display: flex; flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      width: 100%; height: 100%;
+    }
+
+    /* 긴 문제용: 세로 2슬롯을 혼자 다 먹음 */
+    .item.long { grid-row: span 2; }
+
+    /* 문제 번호 */
+    .item-num {
+      font-size: ${T.numSize}px; font-weight: 900;
+      color: ${T.numColor}; margin-bottom: 6px;
+      display: inline-block;
+    }
+
+    /* 이미지 최적화 */
+    .img-wrapper {
+      flex: 1; display: flex;
+      justify-content: flex-start; /* 왼쪽 정렬 */
+      align-items: flex-start; /* 상단 정렬 (위에서 아래로 흐르게) */
+      width: 100%; height: 100%;
+      background: ${T.imgBgColor};
+    }
+
+    .img-wrapper img {
+      width: 100%; 
+      max-height: 100%; 
+      object-fit: ${T.imgFit}; 
+      object-position: left top; /* 무조건 왼쪽 위부터 채움 */
+    }
+    
+    .pg-footer {
+      display: ${T.showFooter ? 'flex' : 'none'}; justify-content: space-between; align-items: center;
+      border-top: 1px solid #bbb; padding-top: 4px; margin-top: 15px; font-size: 10px; color: #888;
+    }
+  `;
+
+  let body = '';
+  let i = 0;
+
+  // 전체 문제 순회
+  let pageNum = 1;
+  while (i < items.length) {
+    let pageHtml = `
+      <div class="page">
+        <div class="pg-header">
+          <div class="pg-header-left">
+            <img class="pg-logo" src="${T.logoData}" />
+            <div>
+              <div class="pg-title">${T.headerTitle === '📚 시험지 제목' ? BOOK_TITLE : T.headerTitle}</div>
+              <div class="pg-subtitle">${T.headerSubtitle}</div>
+            </div>
+          </div>
+          <div style="font-size:16px; font-weight:bold;">${T.headerRight}</div>
+        </div>
+        <div class="exam-body">
+    `;
+
+    // 한 페이지는 'left', 'right' 두 개의 단으로 구성 (T.columns === 1이면 left만)
+    const columns = T.columns === 1 ? ['left'] : ['left', 'right'];
+    for (let col of columns) {
+      let colHtml = `<div class="column">`;
+      let slotsUsed = 0; // 한 단(Column)당 최대 2슬롯
+
+      // 현재 단(Column)에 문제 채우기
+      while (i < items.length && slotsUsed < 2) {
+        let item = items[i];
+        let needed = item.isLong ? 2 : 1; // 긴 건 2칸, 일반은 1칸
+
+        // 이번 단에 남은 자리가 없으면 반복문 탈출 -> 다음 단이나 다음 페이지로 넘어감!
+        if (slotsUsed + needed > 2) {
+          break; 
+        }
+
+        colHtml += `
+          <div class="item ${item.isLong ? 'long' : ''}">
+            <div class="item-num">${getNum(item.n, T.numStyle)}</div>
+            <div class="img-wrapper"><img src="${item.file}"/></div>
+          </div>
+        `;
+        
+        slotsUsed += needed;
+        i++;
+      }
+      
+      // 단 HTML 닫기
+      colHtml += `</div>`;
+      pageHtml += colHtml;
+    }
+    
+    const footerCenter = T.footerCenter === '- 1 -' ? `- ${pageNum} -` : T.footerCenter;
+    pageHtml += `</div>
+      <div class="pg-footer">
+        <span>${T.footerLeft}</span>
+        <span style="font-weight:bold; color:#444;">${footerCenter}</span>
+        <span>${T.footerRight}</span>
+      </div>
+    </div>`;
+    body += pageHtml;
+    pageNum++;
+  }
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${css}</style></head><body>${body}</body></html>`);
+  win.document.close();
+  
+  setTimeout(() => win.print(), 1200);
+}
+
+// ══════════════════════════════════════════════
+// ★ 오답노트 PDF 생성
+// ══════════════════════════════════════════════
+async function printExamWorkbook() {
+  if (!selected.size) { showToast('문제를 먼저 선택해 주세요!'); return; }
+
+  const items = await Promise.all([...selected].map(async (idx, n) => {
+    const imgData = IMAGES[idx];
+    return { n: n + 1, file: imgData.file, num: idx + 1 };
+  }));
+
+  const savedTemplate = localStorage.getItem('workbookTemplate');
+  let T = null;
+  if (savedTemplate) {
+    try { T = JSON.parse(savedTemplate); } catch(e) {}
+  }
+  if (!T) {
+    T = {
+      paperSize:'A4', orientation:'portrait', margin:'normal', columns:1,
+      font:"'Malgun Gothic', sans-serif", bgColor:'#ffffff', bgImage:'',
+      showHeader:true, headerTitle:BOOK_TITLE, headerSubtitle:'', headerRight:'이름 : _________________',
+      logoData:'', logoHeight:36, headerLineColor:'#1a1d2e', headerLineWidth:'2.5px', titleSize:15,
+      numColor:'#1a1d2e', numSize:22, numStyle:'dot', problemGap:20, imgBgColor:'transparent', imgFit:'contain',
+      centerLineStyle:'dashed', centerLineColor:'#999999',
+      showFooter:false, footerLeft:'', footerCenter:'- 1 -', footerRight:'',
+      wbRightTitle: '📝 문제 풀이 및 정답', wbLabelText: '필수개념정리', wbLabelColor: '#d1d5db'
+    };
+  }
+
+  const marginMm = {narrow:'8mm', normal:'10mm', wide:'14mm'}[T.margin] || '10mm';
+  const paperStr = T.paperSize + (T.orientation === 'landscape' ? ' landscape' : '');
+  const bgRule = T.bgImage ? `background-image: url('${T.bgImage}'); background-size: cover;` : `background: ${T.bgColor};`;
+  const paperWidth = T.orientation === 'landscape' ? '297mm' : '210mm';
+  const paperHeight = T.orientation === 'landscape' ? '210mm' : '297mm';
+
+  const getNum = (n, style) => {
+    const circles = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
+    if (style==='paren') return n + ')';
+    if (style==='bracket') return '[' + n + ']';
+    if (style==='circle') return circles[n-1] || n + '.';
+    return n + '.';
+  };
+
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+    @page { size: ${paperStr}; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: ${T.font}; background: #525659; }
+
+    .page {
+      width: ${paperWidth}; height: ${paperHeight}; ${bgRule}
+      margin: 20px auto;
+      padding: ${marginMm};
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      page-break-after: always;
+      overflow: hidden;
+    }
+    @media print {
+      body { background: white; }
+      .page { margin: 0; box-shadow: none; width: ${paperWidth}; height: ${paperHeight}; }
+    }
+
+    /* 헤더 */
+    .pg-header {
+      display: ${T.showHeader ? 'flex' : 'none'};
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: ${T.headerLineWidth} solid ${T.headerLineColor};
+      padding-bottom: 5px;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    .pg-header-left { line-height: 1.3; display: flex; align-items: center; gap: 8px; }
+    .pg-logo { height: ${T.logoHeight}px; display: ${T.logoData ? 'block' : 'none'}; }
+    .pg-book-name { font-size: ${T.titleSize}px; font-weight: 900; color: #1a1d2e; }
+    .pg-page-range { font-size: 10px; color: #6b7280; margin-top: 1px; }
+    .pg-qr {
+      font-size: 16px; font-weight: bold;
+      color: #000; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* 본문 컨테이너: 두 문제 블록 */
+    .pg-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* 직선 구분선 */
+    .pg-divider {
+      width: 100%;
+      height: 1.5px;
+      background: #374151;
+      flex-shrink: 0;
+    }
+
+    /* 단일 문제 블록 */
+    .q-block {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* 왼쪽: 문제 영역 60% */
+    .q-left {
+      width: 60%;
+      flex-shrink: 0;
+      padding: 8px 10px 8px 4px;
+      display: flex;
+      flex-direction: column;
+      border-right: 2px dashed #9ca3af;
+      overflow: hidden;
+    }
+    .q-source { font-size: 9px; color: #9ca3af; margin-bottom: 3px; }
+    .q-numline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+    .q-num {
+      font-size: ${T.numSize}px;
+      font-weight: 900;
+      color: ${T.numColor};
+      line-height: 1;
+    }
+    .q-badge {
+      font-size: 9px; font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: #dbeafe; color: #1d4ed8;
+    }
+    .q-img-area {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      overflow: hidden;
+      background: ${T.imgBgColor};
+    }
+    .q-img-area img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: ${T.imgFit};
+      object-position: left top;
+    }
+
+    /* 오른쪽: 풀이 영역 30% */
+    .q-right {
+      flex: 1;
+      padding: 8px 4px 8px 10px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .q-right-title {
+      font-size: 10px; font-weight: 700; color: #374151;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    .q-right-content {
+      flex: 1;
+      display: flex;
+      position: relative;
+    }
+    .q-concept-label {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      transform: rotate(180deg);
+      font-size: 9.5px; font-weight: 700;
+      color: ${T.wbLabelColor}; letter-spacing: 2px;
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      user-select: none;
+    }
+
+    /* 푸터 */
+    .pg-footer {
+      display: ${T.showFooter ? 'flex' : 'none'};
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid #d1d5db;
+      padding-top: 4px;
+      margin-top: 4px;
+      flex-shrink: 0;
+      font-size: 9px; color: #9ca3af;
+    }
+    .pg-footer-center { font-weight: 700; color: #374151; font-size: 10px; }
+  `;
+
+  let body = '';
+  let pageNum = 1;
+
+  for (let i = 0; i < items.length; i += 2) {
+    const q1 = items[i];
+    const q2 = items[i + 1] || null;
+    const pageRange = q2 ? `문제 ${q1.n} ~ ${q2.n}` : `문제 ${q1.n}`;
+
+    const makeQBlock = (q) => `
+      <div class="q-block">
+        <div class="q-left">
+          <div class="q-source">${T.headerTitle === '📚 시험지 제목' ? BOOK_TITLE : T.headerTitle} ${T.headerSubtitle ? '| ' + T.headerSubtitle : '| ' + BOOK_SUB}</div>
+          <div class="q-numline">
+            <span class="q-num">${getNum(q.n, T.numStyle)}</span>
+            <span class="q-badge">오답노트</span>
+          </div>
+          <div class="q-img-area">
+            <img src="${q.file}" />
+          </div>
+        </div>
+        <div class="q-right">
+          <div class="q-right-title">${T.wbRightTitle}</div>
+          <div class="q-right-content">
+            <div class="q-concept-label">${T.wbLabelText}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footerCenter = T.footerCenter === '- 1 -' ? `- ${pageNum} -` : T.footerCenter;
+    body += `
+      <div class="page">
+        <div class="pg-header">
+          <div class="pg-header-left">
+            <img class="pg-logo" src="${T.logoData}" />
+            <div>
+              <div class="pg-book-name">${T.headerTitle === '📚 시험지 제목' ? BOOK_TITLE : T.headerTitle}</div>
+              <div class="pg-page-range">${pageRange}</div>
+            </div>
+          </div>
+          <div class="pg-qr">${T.headerRight}</div>
+        </div>
+
+        <div class="pg-body">
+          ${makeQBlock(q1)}
+          <div class="pg-divider"></div>
+          ${q2 ? makeQBlock(q2) : '<div class="q-block"></div>'}
+        </div>
+
+        <div class="pg-footer">
+          <span>${T.footerLeft}</span>
+          <span class="pg-footer-center">${footerCenter}</span>
+          <span>${T.footerRight}</span>
+        </div>
+      </div>
+    `;
+    pageNum++;
+  }
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${css}</style></head><body>${body}</body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 1500);
+}
+
+// 토스트
+let _tt;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(_tt);
+  _tt = setTimeout(() => t.classList.remove('show'), 1700);
+}
+
+// 모바일: 사이드바 드로어 토글
+function toggleSidebarMobile() {
+  if (window.innerWidth > 700) return; // 데스크탑은 안동작
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('expanded');
+}
+
+// 초기화 및 렌더링
+initViewerUser();
+</script>
+
+<!-- 분할 진행 오버레이 -->
+<div class="split-overlay" id="splitOverlay">
+  <div class="split-box">
+    <div class="split-spinner"></div>
+    <div class="split-msg">✂️ 문제를 자르는 중입니다...<br><small style="font-weight:400;color:#6b7280;">잠시만 기다려 주세요</small></div>
+  </div>
+</div>
+
+</body>
+</html>
