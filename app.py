@@ -11,6 +11,8 @@ from book_assets import generate_book_assets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from services.github_sync import start_auto_sync
+
 app = Flask(__name__)
 app.secret_key = 'super_secret_admin_key_hyperx_2026'
 DB_PATH = os.path.join(os.path.dirname(__file__), 'admin.db')
@@ -75,6 +77,9 @@ def init_db():
 
 # 앱 시작 시 DB 초기화 및 교재 뷰어 갱신
 init_db()
+
+# 백그라운드 GitHub 자동 동기화 시작 (Render 환경 등)
+start_auto_sync()
 
 # ── 권한 데코레이터 ──
 def login_required(f):
