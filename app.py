@@ -577,7 +577,7 @@ def admin_delete_book_request(req_id):
 @admin_required
 def github_backup():
     """관리자가 수동으로 GitHub에 즉시 백업합니다."""
-    import subprocess, time
+    import subprocess, time, shutil
     token = os.environ.get('GITHUB_TOKEN')
     if not token:
         return jsonify({'ok': False, 'error': 'GITHUB_TOKEN 환경변수가 설정되지 않았습니다.'}), 500
@@ -586,12 +586,15 @@ def github_backup():
     repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
     lock_file = os.path.join(cwd, '.git_sync.lock')
 
-    # 락 확인 (5분 이상 오래된 락은 해제)
+    # 락 확인 및 오랫동안 지연된 락 강제 해제 (30초 초과 시)
     if os.path.exists(lock_file):
-        if time.time() - os.path.getmtime(lock_file) > 300:
-            os.remove(lock_file)
+        if time.time() - os.path.getmtime(lock_file) > 30:
+            try:
+                os.remove(lock_file)
+            except Exception:
+                pass
         else:
-            return jsonify({'ok': False, 'error': '다른 동기화 작업이 진행 중입니다. 잠시 후 다시 시도해주세요.'}), 409
+            return jsonify({'ok': False, 'error': '다른 동기화 작업이 진행 중입니다. 10초 후 다시 시도해주세요.'}), 409
 
     try:
         with open(lock_file, 'w') as f:
@@ -600,6 +603,13 @@ def github_backup():
         subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
         subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False)
         subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False)
+
+        # 꼬여있는 rebase 잔여 폴더 강제 제거 및 abort
+        subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False)
+        for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
+            reb_path = os.path.join(cwd, reb_dir)
+            if os.path.exists(reb_path):
+                shutil.rmtree(reb_path, ignore_errors=True)
 
         status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd)
         changed_files = status.stdout.strip()
@@ -610,8 +620,12 @@ def github_backup():
         subprocess.run(['git', 'add', '.'], cwd=cwd, check=True)
         commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
         subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True)
-        subprocess.run(['git', 'pull', '--rebase', 'origin', 'main'], cwd=cwd, check=False)
+
+        # Git Push 시도 (실패 시 fetch 후 push)
         result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
+        if result.returncode != 0:
+            subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False)
+            result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
 
         if result.returncode != 0:
             raise Exception(result.stderr or 'Push 실패')
@@ -626,7 +640,10 @@ def github_backup():
         return jsonify({'ok': False, 'error': str(e)}), 500
     finally:
         if os.path.exists(lock_file):
-            os.remove(lock_file)
+            try:
+                os.remove(lock_file)
+            except Exception:
+                pass
 
 if __name__ == '__main__':
     print("Server has started! Open browser and go to http://127.0.0.1:5000")
