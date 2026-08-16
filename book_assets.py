@@ -214,7 +214,8 @@ def generate_book_assets(
             pass
 
     if not preview_image and images:
-        preview_image = os.path.relpath(image_dir / image_files[0], index_path.parent).replace(os.sep, "/")
+        from urllib.parse import quote
+        preview_image = f"/img/{quote(folder_name)}/{quote(image_files[0])}"
 
     if ebsi_path.exists():
         viewer_html = ebsi_path.read_text(encoding="utf-8")

@@ -242,6 +242,8 @@ def list_books():
     textbooks_dir = os.path.join(BASE_DIR, 'textbooks')
     img_dir = os.path.join(BASE_DIR, 'img')
     import json as _json
+    from urllib.parse import quote
+    from book_assets import slugify
 
     books = []
     if os.path.exists(textbooks_dir):
@@ -250,25 +252,41 @@ def list_books():
                 continue
             book_name = fname[:-5]  # .html 제거
             meta = {}
-            # img/{book_name}/meta.json 에서 커버 URL 읽기
-            meta_path = os.path.join(img_dir, book_name, 'meta.json')
-            if os.path.exists(meta_path):
-                try:
-                    with open(meta_path, encoding='utf-8') as mf:
-                        meta = _json.load(mf)
-                except Exception:
-                    pass
+
+            # img/ 폴더 검색 (정확한 폴더명 또는 slugify 일치 폴더)
+            target_img_folder = None
+            target_folder_name = None
+            
+            direct_path = os.path.join(img_dir, book_name)
+            if os.path.exists(direct_path):
+                target_img_folder = direct_path
+                target_folder_name = book_name
+            else:
+                if os.path.exists(img_dir):
+                    for d in os.listdir(img_dir):
+                        d_path = os.path.join(img_dir, d)
+                        if os.path.isdir(d_path):
+                            if slugify(d) == book_name or d.replace(' ', '_') == book_name:
+                                target_img_folder = d_path
+                                target_folder_name = d
+                                break
+
+            if target_img_folder:
+                meta_path = os.path.join(target_img_folder, 'meta.json')
+                if os.path.exists(meta_path):
+                    try:
+                        with open(meta_path, encoding='utf-8') as mf:
+                            meta = _json.load(mf)
+                    except Exception:
+                        pass
 
             cover_url = meta.get('custom_cover_url', '')
-            # 커버 URL이 없으면 첫 번째 이미지 경로를 사용
-            if not cover_url:
-                img_folder = os.path.join(img_dir, book_name)
-                if os.path.exists(img_folder):
-                    valid_exts = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'}
-                    imgs = sorted([f for f in os.listdir(img_folder)
-                                   if os.path.splitext(f)[1].lower() in valid_exts])
-                    if imgs:
-                        cover_url = f'/img/{book_name}/{imgs[0]}'
+            if not cover_url and target_img_folder and target_folder_name:
+                valid_exts = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'}
+                imgs = sorted([f for f in os.listdir(target_img_folder)
+                               if os.path.splitext(f)[1].lower() in valid_exts])
+                if imgs:
+                    cover_url = f'/img/{quote(target_folder_name)}/{quote(imgs[0])}'
 
             books.append({
                 'name': book_name,
@@ -276,6 +294,66 @@ def list_books():
                 'cover_url': cover_url,
             })
     return jsonify({'books': books})
+
+@app.route('/api/upload_cover', methods=['POST'])
+@admin_required
+def upload_cover():
+    """교재 표지/로고 이미지 파일 업로드 API"""
+    import json as _json
+    from urllib.parse import quote
+    from book_assets import slugify, generate_book_assets
+
+    folder = request.form.get('folder', '').strip()
+    if not folder:
+        return jsonify({"error": "대상 교재 폴더가 지정되지 않았습니다."}), 400
+    if 'file' not in request.files:
+        return jsonify({"error": "업로드할 파일이 없습니다."}), 400
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify({"error": "선택된 파일이 없습니다."}), 400
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}:
+        return jsonify({"error": "이미지 파일만 업로드할 수 있습니다."}), 400
+
+    target_dir = os.path.join(BASE_DIR, 'img', folder)
+    target_folder_name = folder
+    if not os.path.exists(target_dir):
+        if os.path.exists(os.path.join(BASE_DIR, 'img')):
+            for d in os.listdir(os.path.join(BASE_DIR, 'img')):
+                if slugify(d) == folder or d.replace(' ', '_') == folder:
+                    target_dir = os.path.join(BASE_DIR, 'img', d)
+                    target_folder_name = d
+                    break
+
+    os.makedirs(target_dir, exist_ok=True)
+    cover_filename = f"cover{ext}"
+    cover_path = os.path.join(target_dir, cover_filename)
+    file.save(cover_path)
+
+    cover_url = f"/img/{quote(target_folder_name)}/{cover_filename}"
+
+    # meta.json 갱신
+    meta_path = os.path.join(target_dir, 'meta.json')
+    meta_data = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta_data = _json.load(f)
+        except Exception:
+            pass
+    meta_data['custom_cover_url'] = cover_url
+    with open(meta_path, 'w', encoding='utf-8') as f:
+        _json.dump(meta_data, f, ensure_ascii=False, indent=2)
+
+    # 교재 에셋 갱신
+    try:
+        generate_book_assets(target_folder_name, custom_cover_url=cover_url)
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "cover_url": cover_url})
 
 @app.route('/api/sync_books', methods=['POST'])
 @admin_required
@@ -410,6 +488,10 @@ def run_extract():
 @admin_required
 def run_trim():
     folder = request.args.get('folder', '')
+    if folder == '__all__':
+        img_dir = os.path.join(BASE_DIR, "img")
+        folders = [f for f in sorted(os.listdir(img_dir)) if os.path.isdir(os.path.join(img_dir, f))]
+        return Response(cleanup_images_task(folders), mimetype='text/event-stream')
     return Response(cleanup_images_task([folder]), mimetype='text/event-stream')
 
 @app.route('/api/run/build', methods=['GET'])
@@ -417,7 +499,44 @@ def run_trim():
 def run_build():
     folder = request.args.get('folder', '')
     cover_url = request.args.get('cover_url', '') or None
+    if folder == '__all__':
+        img_dir = os.path.join(BASE_DIR, "img")
+        folders = [f for f in sorted(os.listdir(img_dir)) if os.path.isdir(os.path.join(img_dir, f))]
+        return Response(generate_assets_task(folders, cover_url=cover_url), mimetype='text/event-stream')
     return Response(generate_assets_task([folder], cover_url=cover_url), mimetype='text/event-stream')
+
+@app.route('/api/run/crop_single', methods=['GET', 'POST'])
+@admin_required
+def run_crop_single():
+    folder = request.args.get('folder', '') or (request.get_json(silent=True) or {}).get('folder', '')
+    filename = request.args.get('filename', '') or (request.get_json(silent=True) or {}).get('filename', '')
+    if not folder or not filename:
+        return jsonify({'error': 'folder 및 filename 파라미터가 필요합니다.'}), 400
+
+    img_path = os.path.join(BASE_DIR, 'img', folder, filename)
+    if not os.path.exists(img_path):
+        from book_assets import slugify
+        img_dir = os.path.join(BASE_DIR, 'img')
+        if os.path.exists(img_dir):
+            for d in os.listdir(img_dir):
+                if slugify(d) == folder or d.replace(' ', '_') == folder:
+                    img_path = os.path.join(img_dir, d, filename)
+                    folder = d
+                    break
+
+    if not os.path.exists(img_path):
+        return jsonify({'error': '해당 이미지를 찾을 수 없습니다.'}), 404
+
+    from services.tasks import trim_all_whitespace
+    changed = trim_all_whitespace(img_path)
+    
+    from book_assets import generate_book_assets
+    try:
+        generate_book_assets(folder)
+    except Exception:
+        pass
+
+    return jsonify({'ok': True, 'changed': changed, 'message': f'{filename} 여백 자르기 완료!'})
 
 @app.route('/api/run/split_sync', methods=['GET'])
 @admin_required
@@ -600,16 +719,23 @@ def github_backup():
         with open(lock_file, 'w') as f:
             f.write(str(time.time()))
 
-        subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
+        remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd).stdout.splitlines()
+        if 'origin' in remotes:
+            subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
+        else:
+            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False)
+
         subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False)
         subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False)
 
-        # 꼬여있는 rebase 잔여 폴더 강제 제거 및 abort
-        subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False)
-        for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
-            reb_path = os.path.join(cwd, reb_dir)
-            if os.path.exists(reb_path):
-                shutil.rmtree(reb_path, ignore_errors=True)
+        # 꼬여있는 rebase 잔여 폴더 강제 제거 및 abort (실제 rebase 중일 때만 수행)
+        has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
+        if has_rebase:
+            subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False)
+            for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
+                reb_path = os.path.join(cwd, reb_dir)
+                if os.path.exists(reb_path):
+                    shutil.rmtree(reb_path, ignore_errors=True)
 
         status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd)
         changed_files = status.stdout.strip()

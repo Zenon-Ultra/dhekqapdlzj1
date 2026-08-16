@@ -53,8 +53,12 @@ def auto_sync_loop():
                             subprocess.run(["git", "fetch", "origin"], cwd=cwd, check=True)
                             subprocess.run(["git", "reset", "--mixed", "origin/main"], cwd=cwd, check=True)
                         else:
-                            # 토큰이 포함된 URL로 origin 업데이트
-                            subprocess.run(["git", "remote", "set-url", "origin", repo_url], cwd=cwd, check=False)
+                            # origin 존재 여부 확인 후 set-url 또는 add
+                            remotes = subprocess.run(["git", "remote"], capture_output=True, text=True, cwd=cwd).stdout.splitlines()
+                            if "origin" in remotes:
+                                subprocess.run(["git", "remote", "set-url", "origin", repo_url], cwd=cwd, check=False)
+                            else:
+                                subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=cwd, check=False)
         
                         # 변경사항 확인
                         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=cwd)

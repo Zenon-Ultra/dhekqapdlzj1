@@ -176,10 +176,14 @@
                 <select id="buildFolderSelect"></select>
             </div>
             <div class="form-group">
-                <label>표지 이미지 URL <span style="font-weight:400;color:var(--text-muted);">(optional — 비워두면 첫번째 이미지 사용)</span></label>
+                <label>표지 / 로고 이미지 파일 직접 업로드 <span style="font-weight:400;color:var(--text-muted);">(선택)</span></label>
+                <input type="file" id="coverFile" accept="image/*" style="margin-bottom:8px;">
+            </div>
+            <div class="form-group">
+                <label>표지 이미지 URL <span style="font-weight:400;color:var(--text-muted);">(선택 — URL로 지정할 경우)</span></label>
                 <input type="text" id="coverUrl" placeholder="예: https://example.com/cover.jpg">
             </div>
-            <button class="btn" onclick="runBuild()">HTML/JSON 생성 시작</button>
+            <button class="btn" id="buildBtn" onclick="runBuild()">HTML/JSON 생성 시작</button>
         </div>
     </div>
 
@@ -354,12 +358,14 @@
         try {
             const res = await fetch('/api/folders');
             const data = await res.json();
-            const options = data.folders.map(f => `<option value="${f}">${f}</option>`).join('');
-            document.getElementById('trimFolderSelect').innerHTML = options;
-            document.getElementById('buildFolderSelect').innerHTML = options;
-            document.getElementById('splitFolderSelect').innerHTML = options;
-            document.getElementById('mergeFolderSelect').innerHTML = options;
-            document.getElementById('deleteFolderSelect').innerHTML = options;
+            const allOption = `<option value="__all__">🌐 [전체 교재 일괄 처리]</option>`;
+            const folderOptions = data.folders.map(f => `<option value="${f}">${f}</option>`).join('');
+            
+            document.getElementById('trimFolderSelect').innerHTML = allOption + folderOptions;
+            document.getElementById('buildFolderSelect').innerHTML = allOption + folderOptions;
+            document.getElementById('splitFolderSelect').innerHTML = folderOptions;
+            document.getElementById('mergeFolderSelect').innerHTML = folderOptions;
+            document.getElementById('deleteFolderSelect').innerHTML = folderOptions;
         } catch(e) {
             console.error("폴더 로딩 실패", e);
         }
@@ -369,8 +375,8 @@
     async function loadDeleteFolderGallery() {
         const folder = document.getElementById('deleteFolderSelect').value;
         const grid = document.getElementById('deleteGalleryGrid');
-        if (!folder) {
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">교재를 선택해주세요.</div>';
+        if (!folder || folder === '__all__') {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">단일 교재를 선택해주세요.</div>';
             return;
         }
         grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">이미지 불러오는 중...</div>';
@@ -389,12 +395,31 @@
                 item.innerHTML = `
                     <img src="/img/${folder}/${imgFile}" alt="${imgFile}" onerror="this.src='/img/placeholder.png'">
                     <div class="gallery-item-title">${imgFile}</div>
-                    <button class="gallery-item-del" onclick="confirmDeleteFile('${folder}', '${imgFile}')">🗑️ 삭제</button>
+                    <div style="display:flex;gap:4px;width:100%;margin-top:4px;">
+                        <button class="gallery-item-del" style="flex:1;background:#3b82f6;" onclick="cropSingleFile('${folder}', '${imgFile}')">✂️ 자르기</button>
+                        <button class="gallery-item-del" style="flex:1;" onclick="confirmDeleteFile('${folder}', '${imgFile}')">🗑️ 삭제</button>
+                    </div>
                 `;
                 grid.appendChild(item);
             });
         } catch(e) {
             grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#ef4444;">이미지 로딩 오류</div>';
+        }
+    }
+
+    async function cropSingleFile(folder, filename) {
+        if (!confirm(`${filename} 이미지의 여백을 자동으로 잘라내시겠습니까?`)) return;
+        try {
+            const res = await fetch(`/api/run/crop_single?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`);
+            const data = await res.json();
+            if (data.ok) {
+                alert(`✅ ${filename} 여백 자르기가 완료되었습니다.`);
+                loadDeleteFolderGallery();
+            } else {
+                alert('❌ 자르기 실패: ' + (data.error || '알 수 없는 오류'));
+            }
+        } catch(e) {
+            alert('❌ 서버 연결 실패: ' + e.message);
         }
     }
 
@@ -519,10 +544,38 @@
     }
 
     // 3. 교재 에셋 시작
-    function runBuild() {
+    async function runBuild() {
         const folder = document.getElementById('buildFolderSelect').value;
-        const coverUrl = document.getElementById('coverUrl').value.trim();
+        const coverFileInput = document.getElementById('coverFile');
+        let coverUrl = document.getElementById('coverUrl').value.trim();
+
         if(!folder) return alert('교재를 선택해주세요.');
+
+        // 파일 직접 업로드 처리
+        if (coverFileInput && coverFileInput.files && coverFileInput.files[0]) {
+            const btn = document.getElementById('buildBtn');
+            btn.disabled = true;
+            btn.textContent = '표지 이미지 업로드 중...';
+            
+            const formData = new FormData();
+            formData.append('folder', folder);
+            formData.append('file', coverFileInput.files[0]);
+
+            try {
+                const res = await fetch('/api/upload_cover', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '표지 업로드 실패');
+                coverUrl = data.cover_url;
+            } catch(e) {
+                btn.disabled = false;
+                btn.textContent = 'HTML/JSON 생성 시작';
+                return alert('❌ ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'HTML/JSON 생성 시작';
+            }
+        }
+
         let ep = `/api/run/build?folder=${encodeURIComponent(folder)}`;
         if (coverUrl) ep += `&cover_url=${encodeURIComponent(coverUrl)}`;
         startTask(ep);
