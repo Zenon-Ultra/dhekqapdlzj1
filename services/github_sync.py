@@ -61,18 +61,18 @@ def auto_sync_loop():
                             else:
                                 subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
         
-                        # 변경사항 확인
+                        # 변경사항 확인 (먼저 git add . 로 모든 파일 staging 영역 추가)
+                        subprocess.run(["git", "add", "."], cwd=cwd, check=False, env=git_env, timeout=15)
                         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10)
                         if status.stdout.strip():
                             print("[GitHub Sync] Changes detected, syncing to GitHub...")
                             
                             subprocess.run(["git", "config", "user.email", "bot@render.com"], cwd=cwd, check=False, env=git_env, timeout=10)
                             subprocess.run(["git", "config", "user.name", "Render Auto Sync"], cwd=cwd, check=False, env=git_env, timeout=10)
-                            subprocess.run(["git", "add", "."], cwd=cwd, check=True, env=git_env, timeout=15)
                             subprocess.run(["git", "commit", "-m", "Auto-sync data from Render"], cwd=cwd, check=True, env=git_env, timeout=15)
                             
                             subprocess.run(["git", "fetch", "origin"], cwd=cwd, check=False, env=git_env, timeout=15)
-                            subprocess.run(["git", "push", "--force-with-lease", "origin", "main"], cwd=cwd, check=True, env=git_env, timeout=20)
+                            subprocess.run(["git", "push", "--force-with-lease", "origin", "HEAD:main"], cwd=cwd, check=True, env=git_env, timeout=20)
                             print("[GitHub Sync] Successfully synced to GitHub.")
                     finally:
                         if os.path.exists(lock_file):

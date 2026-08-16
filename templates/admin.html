@@ -641,23 +641,27 @@
 
         <!-- 8. 수동 백업 탭 -->
         <div id="tab-github" class="section">
-            <div class="card" style="max-width:600px;">
+            <div class="card" style="max-width:650px;">
                 <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
                     <div style="font-size:48px;">💾</div>
                     <div>
-                        <div style="font-size:20px;font-weight:700;margin-bottom:4px;">수동 데이터 백업</div>
-                        <div style="color:var(--text-muted);font-size:14px;">원하는 백업 대상(Google Drive / GitHub)을 선택하여 즉시 백업합니다.</div>
+                        <div style="font-size:20px;font-weight:700;margin-bottom:4px;">시스템 데이터 백업 및 저장</div>
+                        <div style="color:var(--text-muted);font-size:14px;">컴퓨터로 전체 백업 ZIP을 즉시 다운로드하거나 GitHub에 저장합니다.</div>
                     </div>
                 </div>
 
-                <!-- 백업 수단 선택 -->
-                <div class="form-group" style="margin-bottom:20px;">
-                    <label style="font-weight:700;">🎯 백업 저장소 선택</label>
-                    <select id="backupTargetSelect" style="background:#fff; font-weight:600; padding:12px; border-radius:8px; border:1px solid var(--border);">
-                        <option value="all">🚀 [통합 백업] GitHub + Google Drive 모두 백업 (추천)</option>
-                        <option value="gdrive">📁 Google Drive만 백업 (전체 ZIP 압축 업로드)</option>
-                        <option value="github">☁️ GitHub만 백업 (소프트웨어 커밋/푸시)</option>
-                    </select>
+                <!-- 1. 원클릭 컴퓨터 ZIP 직접 다운로드 카드 -->
+                <div style="background:linear-gradient(135deg, #eff6ff, #dbeafe);border:1px solid #93c5fd;border-radius:12px;padding:20px;margin-bottom:20px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <div>
+                            <div style="font-size:16px;font-weight:700;color:#1e40af;">📦 내 컴퓨터로 백업 ZIP 직접 다운로드 (추천)</div>
+                            <div style="font-size:13px;color:#3b82f6;margin-top:2px;">모든 교재 에셋, 이미지, 데이터베이스(admin.db)를 ZIP으로 압축하여 즉시 받습니다.</div>
+                        </div>
+                    </div>
+                    <button class="btn" onclick="downloadBackupZip()" style="background:linear-gradient(135deg, #2563eb, #1d4ed8);display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-weight:700;">
+                        <span>📥</span>
+                        <span>백업 ZIP 파일 지금 다운로드</span>
+                    </button>
                 </div>
 
                 <!-- 상태 및 토글 설정 -->
@@ -683,14 +687,35 @@
                             style="color:var(--text-main);">Zenon-Ultra/dhekqapdlzj1</strong></div>
                 </div>
 
+                <!-- 🚨 서비스 점검 모드 (Maintenance Mode) 토글 박스 -->
+                <div id="maintenanceStatusBox"
+                    style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:20px;margin-bottom:20px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:15px;font-weight:700;color:#991b1b;">🚨 서비스 점검 모드 (Maintenance Mode)
+                            </div>
+                            <div style="font-size:12px;color:#b91c1c;margin-top:2px;">
+                                ON 설정 시 일반 유저의 대시보드 및 교재 접근이 차단되며 점검 안내 페이지가 표시됩니다.
+                            </div>
+                        </div>
+                        <label class="toggle-wrap" style="cursor:pointer;">
+                            <input type="checkbox" id="maintenanceToggle" style="display:none;"
+                                onchange="toggleMaintenanceMode(this.checked)">
+                            <div class="toggle-switch"></div>
+                            <span id="maintenanceStatusText"
+                                style="font-weight:700;font-size:13px;color:#ef4444;">OFF</span>
+                        </label>
+                    </div>
+                </div>
+
                 <!-- 백업 결과 -->
                 <div id="githubResultBox"
                     style="display:none;border-radius:10px;padding:16px;margin-bottom:20px;font-size:14px;"></div>
 
                 <button class="btn" id="githubBackupBtn" onclick="githubBackup()"
-                    style="display:flex;align-items:center;justify-content:center;gap:8px;">
-                    <span id="githubBackupBtnIcon">🚀</span>
-                    <span id="githubBackupBtnText">지금 수동 백업 시작하기</span>
+                    style="display:flex;align-items:center;justify-content:center;gap:8px;background:#475569;">
+                    <span id="githubBackupBtnIcon">☁️</span>
+                    <span id="githubBackupBtnText">지금 GitHub 저장소로 백업하기</span>
                 </button>
             </div>
         </div>
@@ -1046,20 +1071,108 @@
             } catch (e) { console.error(e); }
         }
 
-        // ── GitHub 백업 ──
-        function resetGithubResult() {
-            const box = document.getElementById('githubResultBox');
-            box.style.display = 'none';
-            box.innerHTML = '';
+        // ── GitHub 백업 (비동기 폴링 방식) ──
+        let backupPollTimer = null;
+
+        async function pollBackupStatus() {
             const btn = document.getElementById('githubBackupBtn');
-            btn.disabled = false;
-            document.getElementById('githubBackupBtnIcon').textContent = '🚀';
-            document.getElementById('githubBackupBtnText').textContent = '지금 GitHub에 백업하기';
+            const icon = document.getElementById('githubBackupBtnIcon');
+            const text = document.getElementById('githubBackupBtnText');
+            const resultBox = document.getElementById('githubResultBox');
+
+            try {
+                const res = await fetch('/api/admin/github_backup_status');
+                const status = await res.json();
+
+                // 1. 아직 작업 진행 중인 경우 (프로그레스 바 & 퍼센트 렌더링)
+                if (status.running) {
+                    btn.disabled = true;
+                    icon.textContent = '⏳';
+                    const pct = status.percent || 10;
+                    const msg = status.progress_msg || '백업 작업 진행 중...';
+                    text.textContent = `백업 진행 중 (${pct}%) — ${msg}`;
+
+                    resultBox.style.display = 'block';
+                    resultBox.style.background = '#eff6ff';
+                    resultBox.style.border = '1px solid #93c5fd';
+                    resultBox.style.color = '#1e40af';
+                    resultBox.innerHTML = `
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:700;font-size:14px;">
+                            <span>🔄 ${msg}</span>
+                            <span style="font-size:16px;color:#2563eb;font-weight:800;">${pct}%</span>
+                        </div>
+                        <div style="width:100%;height:12px;background:#dbeafe;border-radius:6px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.1);">
+                            <div style="width:${pct}%;height:100%;background:linear-gradient(90deg, #3b82f6, #6366f1);transition:width 0.4s ease;border-radius:6px;"></div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 2. 작업 종료 시 타이머 해제
+                if (backupPollTimer) {
+                    clearInterval(backupPollTimer);
+                    backupPollTimer = null;
+                }
+
+                // 3. 결과 출력
+                if (status.result) {
+                    const data = status.result;
+                    resultBox.style.display = 'block';
+
+                    if (!data.ok && data.error) {
+                        resultBox.style.background = '#fee2e2';
+                        resultBox.style.border = '1px solid #fca5a5';
+                        resultBox.style.color = '#991b1b';
+                        resultBox.innerHTML = `<div style="font-size:16px;">🚨 GitHub 백업 실패: ${data.error}</div>`;
+                        icon.textContent = '🚨';
+                        text.textContent = 'GitHub 백업 실패 — 다시 시도';
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    const ghOk = data.github_ok;
+                    let ghBadge = ghOk ? '✅ GitHub 저장소 저장 성공' : '❌ GitHub 저장 실패';
+
+                    let boxBg = data.ok ? '#d1fae5' : '#fee2e2';
+                    let boxBorder = data.ok ? '#6ee7b7' : '#fca5a5';
+                    let boxColor = data.ok ? '#065f46' : '#991b1b';
+
+                    icon.textContent = data.ok ? '✅' : '🚨';
+                    text.textContent = data.ok ? '지금 GitHub 저장소로 백업하기' : 'GitHub 백업 다시 시도';
+                    btn.disabled = false;
+
+                    resultBox.style.background = boxBg;
+                    resultBox.style.border = `1px solid ${boxBorder}`;
+                    resultBox.style.color = boxColor;
+
+                    resultBox.innerHTML = `
+                    <div style="font-size:16px;font-weight:700;margin-bottom:6px;">☁️ GitHub 저장 결과</div>
+                    <div style="font-size:14px;">
+                        <strong>${ghBadge}</strong>
+                        <div style="font-size:13px;opacity:0.9;margin-top:4px;">${data.github_msg}</div>
+                    </div>
+                `;
+                } else {
+                    btn.disabled = false;
+                    icon.textContent = '☁️';
+                    text.textContent = '지금 GitHub 저장소로 백업하기';
+                }
+            } catch (e) {
+                console.error('Poll status error:', e);
+                if (backupPollTimer) {
+                    clearInterval(backupPollTimer);
+                    backupPollTimer = null;
+                }
+                btn.disabled = false;
+            }
+        }
+
+        // ── 내 컴퓨터로 원클릭 백업 ZIP 다운로드 ──
+        function downloadBackupZip() {
+            window.location.href = '/api/admin/download_backup_zip';
         }
 
         async function githubBackup() {
-            const targetSelect = document.getElementById('backupTargetSelect');
-            const target = targetSelect ? targetSelect.value : 'all';
             const btn = document.getElementById('githubBackupBtn');
             const icon = document.getElementById('githubBackupBtnIcon');
             const text = document.getElementById('githubBackupBtnText');
@@ -1067,23 +1180,20 @@
 
             btn.disabled = true;
             icon.textContent = '⏳';
-            text.textContent = '선택한 저장소로 백업 진행 중... (최대 1~2분 소요 가능)';
-            resultBox.style.display = 'none';
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 120000); // 120초 타임아웃
+            text.textContent = 'GitHub 백업 요청 전송 중...';
+            resultBox.style.display = 'block';
+            resultBox.style.background = '#eff6ff';
+            resultBox.style.border = '1px solid #93c5fd';
+            resultBox.style.color = '#1e40af';
+            resultBox.innerHTML = '<div>GitHub 백업 작업을 시작합니다...</div>';
 
             try {
                 const res = await fetch('/api/admin/github_backup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target: target }),
-                    signal: controller.signal
+                    body: JSON.stringify({ target: 'github' })
                 });
-                clearTimeout(timeoutId);
                 const data = await res.json();
-
-                resultBox.style.display = 'block';
 
                 if (!res.ok && data.error) {
                     resultBox.style.background = '#fee2e2';
@@ -1091,80 +1201,22 @@
                     resultBox.style.color = '#991b1b';
                     resultBox.innerHTML = `<div style="font-size:16px;">🚨 오류: ${data.error}</div>`;
                     icon.textContent = '🚨';
-                    text.textContent = '백업 실패 — 다시 시도';
+                    text.textContent = 'GitHub 백업 실패 — 다시 시도';
                     btn.disabled = false;
                     return;
                 }
 
-                const ghOk = data.github_ok;
-                const gdOk = data.gdrive_ok;
+                if (backupPollTimer) clearInterval(backupPollTimer);
+                backupPollTimer = setInterval(pollBackupStatus, 1500);
+                pollBackupStatus();
 
-                let ghBadge = ghOk ? '✅ GitHub: 성공' : '❌ GitHub: 실패';
-                let gdBadge = gdOk ? '✅ Google Drive: 성공' : '❌ Google Drive: 실패';
-
-                if (target === 'github') gdBadge = '⚪ Google Drive: 미선택 (제외됨)';
-                if (target === 'gdrive') ghBadge = '⚪ GitHub: 미선택 (제외됨)';
-
-                let boxBg = '#eff6ff';
-                let boxBorder = '#93c5fd';
-                let boxColor = '#1e40af';
-
-                if (data.ok) {
-                    boxBg = '#d1fae5';
-                    boxBorder = '#6ee7b7';
-                    boxColor = '#065f46';
-                    icon.textContent = '✅';
-                    text.textContent = '백업 완료';
-                } else if ((target === 'all' && (ghOk || gdOk)) || (!data.ok)) {
-                    boxBg = '#fef3c7';
-                    boxBorder = '#fcd34d';
-                    boxColor = '#92400e';
-                    icon.textContent = '⚠️';
-                    text.textContent = '부분 완료 (상세 확인)';
-                } else {
-                    boxBg = '#fee2e2';
-                    boxBorder = '#fca5a5';
-                    boxColor = '#991b1b';
-                    icon.textContent = '🚨';
-                    text.textContent = '백업 실패 — 다시 시도';
-                }
-
-                btn.disabled = false;
-
-                resultBox.style.background = boxBg;
-                resultBox.style.border = `1px solid ${boxBorder}`;
-                resultBox.style.color = boxColor;
-
-                const targetLabel = target === 'all' ? '전체 (GitHub + Google Drive)' : (target === 'gdrive' ? 'Google Drive 전용' : 'GitHub 전용');
-
-                resultBox.innerHTML = `
-                <div style="font-size:17px;font-weight:700;margin-bottom:10px;">📦 백업 수행 결과 — ${targetLabel}</div>
-                <div style="font-size:14px;margin-bottom:6px;">
-                    <strong>${ghBadge}</strong>
-                    <div style="font-size:12px;opacity:0.85;margin-top:2px;">${data.github_msg}</div>
-                </div>
-                <div style="font-size:14px;">
-                    <strong>${gdBadge}</strong>
-                    <div style="font-size:12px;opacity:0.85;margin-top:2px;">${data.gdrive_msg}</div>
-                </div>
-            `;
             } catch (e) {
-                clearTimeout(timeoutId);
-                resultBox.style.display = 'block';
                 resultBox.style.background = '#fee2e2';
                 resultBox.style.border = '1px solid #fca5a5';
                 resultBox.style.color = '#991b1b';
-                
-                let errDetail = e.message;
-                if (e.name === 'AbortError') {
-                    errDetail = '백업 작업 시간이 120초를 초과하여 브라우저 연결이 일시 해제되었습니다. 서버에서 백업 작업이 완료 중일 수 있으니 10초 후 새로고침 해보세요.';
-                } else if (e.message === 'Failed to fetch') {
-                    errDetail = '서버 응답 지연(Render 30초 타임아웃) 또는 네트워크 연결 해제. (Procfile 배포 반영 후 다시 시도해보세요)';
-                }
-
-                resultBox.innerHTML = '<div>🚨 통신 오류: ' + errDetail + '</div>';
+                resultBox.innerHTML = '<div>🚨 요청 오류: ' + e.message + '</div>';
                 icon.textContent = '🚨';
-                text.textContent = '백업 실패 — 다시 시도';
+                text.textContent = 'GitHub 백업 실패 — 다시 시도';
                 btn.disabled = false;
             }
         }
@@ -1203,9 +1255,44 @@
             }
         }
 
+        // ── 서비스 점검 모드 ON/OFF 제어 ──
+        async function loadMaintenanceStatus() {
+            try {
+                const res = await fetch('/api/admin/maintenance');
+                const data = await res.json();
+                const toggle = document.getElementById('maintenanceToggle');
+                const statusText = document.getElementById('maintenanceStatusText');
+                if (toggle && statusText) {
+                    toggle.checked = !!data.enabled;
+                    statusText.textContent = data.enabled ? 'ON (점검중)' : 'OFF (정상)';
+                    statusText.style.color = data.enabled ? '#dc2626' : '#6b7280';
+                }
+            } catch (e) {
+                console.error('Maintenance status fetch error:', e);
+            }
+        }
+
+        async function toggleMaintenanceMode(enabled) {
+            const statusText = document.getElementById('maintenanceStatusText');
+            if (statusText) {
+                statusText.textContent = enabled ? 'ON (점검중)' : 'OFF (정상)';
+                statusText.style.color = enabled ? '#dc2626' : '#6b7280';
+            }
+            try {
+                await fetch('/api/admin/maintenance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+            } catch (e) {
+                console.error('Toggle maintenance error:', e);
+            }
+        }
+
         window.onload = function () {
             fetchFolders();
             loadAutoSyncStatus();
+            loadMaintenanceStatus();
             if (document.getElementById('tab-requests').classList.contains('active')) {
                 loadRequests();
             }

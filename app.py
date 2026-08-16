@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, Response, jsonify, send_from_directory, session, redirect, url_for
+from flask import Flask, render_template, request, Response, jsonify, send_from_directory, session, redirect, url_for, send_file, after_this_request
 import os
 import sqlite3
 from functools import wraps
@@ -54,6 +54,9 @@ def init_db():
             )
         ''')
 
+        # system_config 테이블 생성 (점검 모드 등 시스템 설정 저장)
+        c.execute('''CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)''')
+
         # admin123 계정 생성 또는 역할 업데이트
         c.execute("SELECT role FROM users WHERE username='admin123'")
         row = c.fetchone()
@@ -63,6 +66,46 @@ def init_db():
         else:
             c.execute("UPDATE users SET role='admin' WHERE username='admin123'")
         conn.commit()
+
+def get_maintenance_mode():
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
+            c.execute("SELECT value FROM system_config WHERE key='maintenance_mode'")
+            row = c.fetchone()
+            if row:
+                return row[0] == '1'
+    except Exception:
+        pass
+    return False
+
+def set_maintenance_mode(enabled: bool):
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
+        val = '1' if enabled else '0'
+        c.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('maintenance_mode', ?)", (val,))
+        conn.commit()
+
+@app.before_request
+def check_maintenance_mode():
+    # 관리자 로그인 사용자는 제한 없음
+    if session.get('admin_logged_in'):
+        return None
+    
+    # 점검 모드가 OFF면 통과
+    if not get_maintenance_mode():
+        return None
+
+    # 허용되는 관리자/로그인/정적 자원 라우트
+    path = request.path
+    allowed_prefixes = ['/admin', '/api/admin', '/static', '/favicon.ico']
+    if any(path.startswith(prefix) for prefix in allowed_prefixes):
+        return None
+
+    # 그 외 모든 일반 유저 접근(대시보드 메인, 교재 뷰어 등)은 점검 중 페이지 렌더링
+    return render_template('maintenance.html'), 530
 
     # 앱 시작 시 교재 뷰어 에셋 자동 동기화 (ebsi_sc.html 변경사항 반영)
     base_img = os.path.join(os.path.dirname(__file__), 'img')
@@ -692,134 +735,186 @@ def admin_delete_book_request(req_id):
         conn.commit()
     return jsonify({"ok": True})
 
-@app.route('/api/admin/github_backup', methods=['POST'])
-@admin_required
-def github_backup():
-    """선택된 대상(GitHub / Google Drive / 전체)으로 수동 백업을 수행합니다."""
+BACKUP_TASK_STATUS = {
+    'running': False,
+    'target': 'github',
+    'progress_msg': '',
+    'percent': 0,
+    'result': None,
+    'start_time': 0
+}
+
+def execute_backup_background(cwd):
+    global BACKUP_TASK_STATUS
     import subprocess, time, shutil
-    from services.gdrive_backup import backup_to_google_drive
 
-    data = request.get_json(silent=True) or {}
-    target = data.get('target', request.args.get('target', 'all')).lower()
-    if target not in ['all', 'github', 'gdrive']:
-        target = 'all'
+    BACKUP_TASK_STATUS['running'] = True
+    BACKUP_TASK_STATUS['target'] = 'github'
+    BACKUP_TASK_STATUS['progress_msg'] = 'GitHub 백업 준비 중...'
+    BACKUP_TASK_STATUS['percent'] = 10
+    BACKUP_TASK_STATUS['result'] = None
+    BACKUP_TASK_STATUS['start_time'] = time.time()
 
-    cwd = os.path.dirname(os.path.abspath(__file__))
+    print("[Backup Task] Started GitHub backup", flush=True)
+
     lock_file = os.path.join(cwd, '.git_sync.lock')
-
-    # 락 확인 및 오랫동안 지연된 락 강제 해제 (30초 초과 시)
-    if os.path.exists(lock_file):
-        if time.time() - os.path.getmtime(lock_file) > 30:
-            try:
-                os.remove(lock_file)
-            except Exception:
-                pass
-        else:
-            return jsonify({'ok': False, 'error': '다른 백업/동기화 작업이 진행 중입니다. 10초 후 다시 시도해주세요.'}), 409
-
-    github_ok = True if target == 'gdrive' else False
-    github_msg = "GitHub 백업 제외됨" if target == 'gdrive' else ""
+    github_ok = False
+    github_msg = ""
     github_error = None
     commit_msg = None
     changed = False
-
-    gdrive_ok = True if target == 'github' else False
-    gdrive_msg = "Google Drive 백업 제외됨" if target == 'github' else ""
-    zip_name = None
 
     try:
         with open(lock_file, 'w') as f:
             f.write(str(time.time()))
 
-        # ── 1. GitHub 백업 단계 ──
-        if target in ['all', 'github']:
-            token = os.environ.get('GITHUB_TOKEN')
-            if not token:
-                github_ok = False
-                github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
+        BACKUP_TASK_STATUS['progress_msg'] = 'GitHub 저장소 연결 및 인증 확인 중...'
+        BACKUP_TASK_STATUS['percent'] = 25
+        print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
+
+        token = os.environ.get('GITHUB_TOKEN')
+        if not token:
+            github_ok = False
+            github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
+        else:
+            repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
+            git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "echo"}
+
+            remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10).stdout.splitlines()
+            if 'origin' in remotes:
+                subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
             else:
-                try:
-                    repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
-                    git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "echo"}
+                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
 
-                    remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10).stdout.splitlines()
-                    if 'origin' in remotes:
-                        subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
-                    else:
-                        subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
+            subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False, env=git_env, timeout=10)
+            subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False, env=git_env, timeout=10)
 
-                    subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False, env=git_env, timeout=10)
-                    subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False, env=git_env, timeout=10)
+            has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
+            if has_rebase:
+                subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False, env=git_env, timeout=10)
+                for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
+                    reb_path = os.path.join(cwd, reb_dir)
+                    if os.path.exists(reb_path):
+                        shutil.rmtree(reb_path, ignore_errors=True)
 
-                    has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
-                    if has_rebase:
-                        subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False, env=git_env, timeout=10)
-                        for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
-                            reb_path = os.path.join(cwd, reb_dir)
-                            if os.path.exists(reb_path):
-                                shutil.rmtree(reb_path, ignore_errors=True)
+            BACKUP_TASK_STATUS['progress_msg'] = '변경된 모든 에셋 및 데이터 파일 감지 중 (git add .)...'
+            BACKUP_TASK_STATUS['percent'] = 50
+            print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
+            subprocess.run(['git', 'add', '.'], cwd=cwd, check=False, env=git_env, timeout=20)
 
-                    status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10)
-                    changed_files = status.stdout.strip()
+            status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10)
+            changed_files = status.stdout.strip()
 
-                    if not changed_files:
-                        github_ok = True
-                        github_msg = "변경된 코드가 없습니다. GitHub는 이미 최신 상태입니다."
-                        changed = False
-                    else:
-                        subprocess.run(['git', 'add', '.'], cwd=cwd, check=True, env=git_env, timeout=15)
-                        commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
-                        subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=15)
+            if not changed_files:
+                github_ok = True
+                github_msg = "변경된 파일이 없습니다. GitHub 저장소가 이미 최신 상태입니다."
+                changed = False
+                BACKUP_TASK_STATUS['percent'] = 100
+            else:
+                file_count = len(changed_files.splitlines())
+                commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")} ({file_count} files changed)'
+                BACKUP_TASK_STATUS['progress_msg'] = f'GitHub 커밋 및 원격 푸시 중 ({file_count}개 파일)...'
+                BACKUP_TASK_STATUS['percent'] = 80
+                print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
 
-                        result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=20)
-                        if result.returncode != 0:
-                            subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=15)
-                            result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=20)
+                subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=20)
 
-                        if result.returncode != 0:
-                            raise Exception((result.stderr or result.stdout or 'Git push 실패').strip())
+                result = subprocess.run(['git', 'push', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=30)
+                if result.returncode != 0:
+                    subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=15)
+                    result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=30)
 
-                        github_ok = True
-                        github_msg = f"GitHub 커밋/푸시 완료! ({commit_msg})"
-                        changed = True
+                if result.returncode != 0:
+                    err_detail = (result.stderr or result.stdout or 'Git push 실패').strip()
+                    raise Exception(f"Git push 실패: {err_detail}")
 
-                except Exception as gh_e:
-                    github_ok = False
-                    github_error = str(gh_e)
+                github_ok = True
+                github_msg = f"GitHub 전체 백업 완료! ({file_count}개 변경 파일 커밋/푸시됨)"
+                changed = True
+                BACKUP_TASK_STATUS['percent'] = 100
 
-        # ── 2. Google Drive ZIP 백업 단계 ──
-        if target in ['all', 'gdrive']:
-            try:
-                gdrive_ok, gdrive_msg, zip_name = backup_to_google_drive(cwd)
-            except Exception as gd_e:
-                gdrive_ok = False
-                gdrive_msg = f"Google Drive 백업 예외: {gd_e}"
-
-        overall_ok = (github_ok if target != 'gdrive' else True) and (gdrive_ok if target != 'github' else True)
-        if target == 'all':
-            overall_ok = github_ok and gdrive_ok
-
-        return jsonify({
-            'ok': overall_ok,
-            'target': target,
+        BACKUP_TASK_STATUS['progress_msg'] = '백업 완료!'
+        BACKUP_TASK_STATUS['result'] = {
+            'ok': github_ok,
             'github_ok': github_ok,
-            'github_msg': github_msg or github_error or 'GitHub 백업 대기',
+            'github_msg': github_msg or github_error or 'GitHub 백업 완료',
             'github_error': github_error,
-            'gdrive_ok': gdrive_ok,
-            'gdrive_msg': gdrive_msg,
-            'zip_name': zip_name,
             'changed': changed,
             'commit': commit_msg
-        })
+        }
 
     except Exception as e:
-        return jsonify({'ok': False, 'error': f'백업 처리 중 예외 발생: {e}'}), 500
+        BACKUP_TASK_STATUS['percent'] = 100
+        BACKUP_TASK_STATUS['result'] = {
+            'ok': False,
+            'error': f'GitHub 백업 중 예외 발생: {e}'
+        }
+        print(f"[Backup Task] Severe error: {e}", flush=True)
     finally:
+        BACKUP_TASK_STATUS['running'] = False
         if os.path.exists(lock_file):
             try:
                 os.remove(lock_file)
             except Exception:
                 pass
+
+@app.route('/api/admin/github_backup', methods=['POST'])
+@admin_required
+def github_backup():
+    import threading
+    global BACKUP_TASK_STATUS
+
+    if BACKUP_TASK_STATUS['running']:
+        return jsonify({
+            'ok': False,
+            'error': '이미 백업 작업이 진행 중입니다.',
+            'running': True,
+            'progress_msg': BACKUP_TASK_STATUS['progress_msg']
+        }), 409
+
+    cwd = os.path.dirname(os.path.abspath(__file__))
+
+    t = threading.Thread(target=execute_backup_background, args=(cwd,), daemon=True)
+    t.start()
+
+    return jsonify({
+        'ok': True,
+        'status': 'started',
+        'message': 'GitHub 백업이 시작되었습니다.'
+    })
+
+@app.route('/api/admin/download_backup_zip', methods=['GET'])
+@admin_required
+def download_backup_zip():
+    """현재 프로젝트 소스, 이미지, 데이터베이스(admin.db)를 ZIP으로 즉시 압축하여 브라우저로 직접 다운로드합니다."""
+    from services.backup import create_project_zip
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    try:
+        zip_filepath, zip_filename = create_project_zip(cwd)
+
+        @after_this_request
+        def remove_file(response):
+            try:
+                if os.path.exists(zip_filepath):
+                    os.remove(zip_filepath)
+            except Exception:
+                pass
+            return response
+
+        return send_file(
+            zip_filepath,
+            as_attachment=True,
+            download_name=zip_filename,
+            mimetype='application/zip'
+        )
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'ZIP 압축 다운로드 생성 실패: {e}'}), 500
+
+@app.route('/api/admin/github_backup_status', methods=['GET'])
+@admin_required
+def github_backup_status():
+    global BACKUP_TASK_STATUS
+    return jsonify(BACKUP_TASK_STATUS)
 
 @app.route('/api/admin/github_auto_sync', methods=['GET', 'POST'])
 @admin_required
@@ -831,6 +926,17 @@ def github_auto_sync_toggle():
         set_auto_sync_enabled(enabled)
         return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
     return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
+
+@app.route('/api/admin/maintenance', methods=['GET', 'POST'])
+@admin_required
+def maintenance_mode_toggle():
+    """점검 모드 ON/OFF 상태를 조회하거나 변경합니다."""
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get('enabled', False))
+        set_maintenance_mode(enabled)
+        return jsonify({'ok': True, 'enabled': get_maintenance_mode()})
+    return jsonify({'ok': True, 'enabled': get_maintenance_mode()})
 
 if __name__ == '__main__':
     print("Server has started! Open browser and go to http://127.0.0.1:5000")
