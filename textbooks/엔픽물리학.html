@@ -483,6 +483,9 @@
       <button class="btn-merge" id="mergeBtn" onclick="event.stopPropagation(); mergeProblem()" disabled>
         🔗 선택한 문제 합치기
       </button>
+      <button class="btn-merge" id="bulkSplitBtn" onclick="event.stopPropagation(); bulkSplitSelected()" style="display:none;background:#fdf4ff;color:#7c3aed;border-color:#c4b5fd;margin-top:4px;">
+        ✂️ 선택 이미지 일괄 자르기
+      </button>
     </div>
     <div class="cart-list" id="cartList">
       <div class="cart-empty">
@@ -1116,10 +1119,15 @@ async function initViewerUser() {
       userRole = userData.role || 'user';
     }
     
-    // 일반 유저인 경우 합치기 버튼 숨김
+    // 일반 유저인 경우 관리자 전용 버튼 숨김
     if (userRole !== 'admin') {
       const mergeBtn = document.getElementById('mergeBtn');
       if (mergeBtn) mergeBtn.style.display = 'none';
+      const bulkSplitBtn = document.getElementById('bulkSplitBtn');
+      if (bulkSplitBtn) bulkSplitBtn.style.display = 'none';
+    } else {
+      const bulkSplitBtn = document.getElementById('bulkSplitBtn');
+      if (bulkSplitBtn) bulkSplitBtn.style.display = '';
     }
 
     // 스크랩 데이터 로드
@@ -1239,6 +1247,29 @@ async function toggleScrap(i, btn) {
       showToast('스크랩 저장 중 오류가 발생했습니다');
     }
   }
+}
+
+// ── 관리자 전용: 선택 이미지 일괄 자르기 ──
+async function bulkSplitSelected() {
+  if (selected.size === 0) { showToast('자를 이미지를 먼저 선택해 주세요!'); return; }
+  const filenames = [...selected].map(i => IMAGES[i].file.split('/').pop());
+  const folder = BOOK_FOLDER;
+  if (!confirm(`선택한 ${filenames.length}개 이미지를 모두 자릅니다.\n이진 번호가 한 칸씩 밀려지니 주의하세요.\n계속하시겠습니까?`)) return;
+  const btn = document.getElementById('bulkSplitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 자르기 진행 중...'; }
+  showToast(`✂️ ${filenames.length}개 일괄 자르기 시작...`);
+  try {
+    const res = await fetch('/api/run/bulk_split', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, filenames })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✂️ 완료! 성공 ${data.success}/${data.total}개` + (data.failed > 0 ? ` (실패 ${data.failed}개)` : ''));
+      data.results.filter(r => !r.ok).forEach(r => console.warn('[BulkSplit] 실패:', r.file, r.error));
+    } else { showToast('❌ 오류: ' + (data.error || '알 수 없는 오류')); }
+  } catch (e) { showToast('❌ 네트워크 오류: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '✂️ 선택 이미지 일괄 자르기'; } }
 }
 
 // ── 선택 문제 일괄 스크랩 ──

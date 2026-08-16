@@ -597,6 +597,38 @@ def run_split_sync():
         list(split_image_task(folder, num))
     return jsonify({"ok": True})
 
+@app.route('/api/run/bulk_split', methods=['POST'])
+@admin_required
+def run_bulk_split():
+    """선택된 이미지 파일 목록을 순서대로 분할합니다. (관리자 전용)"""
+    data = request.get_json(silent=True) or {}
+    folder = data.get('folder', '').strip()
+    filenames = data.get('filenames', [])  # 파일명 목록 (예: ["001.png", "003.png"])
+
+    if not folder:
+        return jsonify({'ok': False, 'error': 'folder 파라미터가 필요합니다.'}), 400
+    if not filenames:
+        return jsonify({'ok': False, 'error': '분할할 파일이 선택되지 않았습니다.'}), 400
+
+    results = []
+    for filename in filenames:
+        try:
+            list(split_image_task(folder, str(filename)))
+            results.append({'file': filename, 'ok': True})
+            print(f"[BulkSplit] OK: {folder}/{filename}", flush=True)
+        except Exception as e:
+            results.append({'file': filename, 'ok': False, 'error': str(e)})
+            print(f"[BulkSplit] ERROR: {folder}/{filename}: {e}", flush=True)
+
+    success = sum(1 for r in results if r['ok'])
+    return jsonify({
+        'ok': True,
+        'total': len(filenames),
+        'success': success,
+        'failed': len(filenames) - success,
+        'results': results,
+    })
+
 @app.route('/api/run/build_sync', methods=['GET'])
 @admin_required
 def run_build_sync():
