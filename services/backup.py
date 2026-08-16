@@ -91,6 +91,7 @@ def create_project_zip(
     """
     현재 프로젝트의 핵심 소스 및 데이터(admin.db, 교재 에셋 포함)를 ZIP으로 압축합니다.
     이미지·폰트 등 이미 압축된 파일은 ZIP_STORED(무압축)로 처리하여 속도를 극대화합니다.
+    512MB 메모리 제한 환경을 고려해 100파일마다 GC를 실행합니다.
 
     Args:
         root_dir: 압축할 루트 디렉터리
@@ -99,6 +100,7 @@ def create_project_zip(
     Returns:
         (zip_filepath, zip_filename)
     """
+    import gc
     time_str = get_seoul_now_str()
     short_id = uuid.uuid4().hex[:6]
     zip_filename = f"HYPERX_Backup_{time_str}_{short_id}.zip"
@@ -109,7 +111,7 @@ def create_project_zip(
     all_files = _collect_files(root_dir)
     total = len(all_files)
 
-    with zipfile.ZipFile(zip_filepath, 'w') as zip_file:
+    with zipfile.ZipFile(zip_filepath, 'w', allowZip64=True) as zip_file:
         for idx, (abs_file, rel_file) in enumerate(all_files, start=1):
             # 이미 압축된 포맷은 STORED, 그 외는 DEFLATED
             ext = os.path.splitext(rel_file)[1].lower()
@@ -120,6 +122,9 @@ def create_project_zip(
                 print(f"[ZIP Warning] Skipping file {abs_file}: {write_err}")
             if progress_callback:
                 progress_callback(idx, total, rel_file)
+            # 100파일마다 GC 실행 → ZipFile 내부 버퍼·참조 해제
+            if idx % 100 == 0:
+                gc.collect()
 
     return zip_filepath, zip_filename
 

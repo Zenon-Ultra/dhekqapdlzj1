@@ -823,7 +823,23 @@ def execute_backup_background(cwd):
                 except Exception as lock_err:
                     print(f"[Backup Task] Warning: could not remove index.lock: {lock_err}", flush=True)
 
-            subprocess.run(['git', 'add', '.'], cwd=cwd, check=False, env=git_env, timeout=120)
+            subprocess.run(['git', 'add', '-u'], cwd=cwd, check=False, env=git_env, timeout=120)
+
+            # 새 파일(untracked)은 목록을 먼저 가져와 100개씩 나눠 add → 메모리 급증 방지
+            ls_new = subprocess.run(
+                ['git', 'ls-files', '--others', '--exclude-standard'],
+                capture_output=True, text=True, cwd=cwd, env=git_env, timeout=60
+            )
+            new_files = [f for f in ls_new.stdout.splitlines() if f.strip()]
+            if new_files:
+                batch_size = 100
+                for batch_start in range(0, len(new_files), batch_size):
+                    batch = new_files[batch_start:batch_start + batch_size]
+                    subprocess.run(
+                        ['git', 'add', '--'] + batch,
+                        cwd=cwd, check=False, env=git_env, timeout=60
+                    )
+                    print(f"[Backup Task] git add batch {batch_start // batch_size + 1}: {len(batch)} files", flush=True)
 
             status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=30)
             changed_files = status.stdout.strip()
