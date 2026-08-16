@@ -90,5 +90,18 @@ def test_admin_delete_api(client):
     res_admin_page = client.get('/admin')
     assert res_admin_page.status_code == 200
 
+def test_service_account_json_parser_accepts_wrapped_json(monkeypatch):
+    from services.gdrive_backup import parse_service_account_json
+
+    raw = ''''{
+      "type": "service_account",
+      "project_id": "demo-project"
+    }' '''
+
+    parsed = parse_service_account_json(raw)
+    assert parsed["type"] == "service_account"
+    assert parsed["project_id"] == "demo-project"
+
+
 if __name__ == '__main__':
     pytest.main(['-v', __file__])

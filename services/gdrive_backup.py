@@ -1,5 +1,6 @@
 import os
 import json
+import ast
 import uuid
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -80,6 +81,32 @@ def create_project_zip(root_dir: str) -> Tuple[str, str]:
     return zip_filepath, zip_filename
 
 
+def parse_service_account_json(raw_value: str):
+    """환경 변수에 들어온 JSON 문자열을 안전하게 파싱합니다.
+
+    Render / dotenv 환경에서는 문자열이 감싸져 있거나 공백, 작은따옴표,
+    Python 스타일 dict 리터럴로 저장되는 경우가 있어 이를 보완적으로 처리합니다.
+    """
+    if raw_value is None:
+        raise ValueError("인증 정보가 비어 있습니다.")
+
+    value = raw_value.strip()
+    if not value:
+        raise ValueError("인증 정보가 비어 있습니다.")
+
+    for _ in range(2):
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1].strip()
+
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        try:
+            return ast.literal_eval(value)
+        except (ValueError, SyntaxError) as e:
+            raise ValueError(f"GOOGLE_SERVICE_ACCOUNT_JSON 파싱 실패: {e}") from e
+
+
 def backup_to_google_drive(root_dir: str) -> Tuple[bool, str, Optional[str]]:
     """
     프로젝트를 ZIP으로 압축하여 Google Drive 지정 폴더로 업로드 후 임시 ZIP을 삭제합니다.
@@ -100,9 +127,9 @@ def backup_to_google_drive(root_dir: str) -> Tuple[bool, str, Optional[str]]:
     creds_info = None
     if service_account_env:
         try:
-            creds_info = json.loads(service_account_env)
+            creds_info = parse_service_account_json(service_account_env)
         except Exception as e:
-            return False, f"GOOGLE_SERVICE_ACCOUNT_JSON 파싱 실패: {e}", None
+            return False, str(e), None
     elif service_account_file and os.path.exists(service_account_file):
         try:
             with open(service_account_file, 'r', encoding='utf-8') as f:
