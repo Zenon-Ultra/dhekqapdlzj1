@@ -813,9 +813,9 @@ def execute_backup_background(cwd):
             BACKUP_TASK_STATUS['progress_msg'] = '변경된 모든 에셋 및 데이터 파일 감지 중 (git add .)...'
             BACKUP_TASK_STATUS['percent'] = 50
             print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-            subprocess.run(['git', 'add', '.'], cwd=cwd, check=False, env=git_env, timeout=20)
+            subprocess.run(['git', 'add', '.'], cwd=cwd, check=False, env=git_env, timeout=120)
 
-            status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10)
+            status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=30)
             changed_files = status.stdout.strip()
 
             if not changed_files:
@@ -830,12 +830,12 @@ def execute_backup_background(cwd):
                 BACKUP_TASK_STATUS['percent'] = 80
                 print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
 
-                subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=20)
+                subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=60)
 
-                result = subprocess.run(['git', 'push', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=30)
+                result = subprocess.run(['git', 'push', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=120)
                 if result.returncode != 0:
-                    subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=15)
-                    result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=30)
+                    subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=30)
+                    result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=120)
 
                 if result.returncode != 0:
                     err_detail = (result.stderr or result.stdout or 'Git push 실패').strip()
@@ -1013,7 +1013,7 @@ def download_backup_zip():
     zip_filepath = s.get('filepath')
     zip_filename = s.get('filename')
 
-    if not ZIP_TASK_STATUS['ready'] or not zip_filepath or not os.path.exists(zip_filepath):
+    if not s.get('ready') or not zip_filepath or not os.path.exists(zip_filepath):
         return jsonify({'ok': False, 'error': 'ZIP 파일이 아직 준비되지 않았습니다. 먼저 prepare_backup_zip을 호출하세요.'}), 400
 
     @after_this_request
