@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,392 +8,772 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #3b82f6; --primary-hover: #2563eb;
-            --bg: #f3f4f6; --surface: #ffffff;
-            --text-main: #1f2937; --text-muted: #6b7280;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
             --border: #e5e7eb;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', 'Pretendard', sans-serif; }
-        body { background-color: var(--bg); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', 'Pretendard', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
 
         /* Sidebar */
-        .sidebar { width: 260px; background: #1e293b; color: white; display: flex; flex-direction: column; }
-        .logo { padding: 24px; font-size: 20px; font-weight: 700; border-bottom: 1px solid #334155; }
-        .logo span { color: #60a5fa; }
-        .nav { flex: 1; padding: 20px 0; display: flex; flex-direction: column; gap: 8px; }
-        .nav-item { padding: 12px 24px; color: #cbd5e1; cursor: pointer; transition: 0.2s; font-weight: 500; display: flex; align-items: center; gap: 12px; }
-        .nav-item:hover, .nav-item.active { background: #334155; color: white; border-left: 4px solid var(--primary); }
-        .nav-item.logout { margin-top: auto; border-top: 1px solid #334155; border-left: none; color: #ef4444; }
-        .nav-item.logout:hover { background: rgba(239, 68, 68, 0.1); color: #f87171; }
-        .nav-item.back-home { border-left: none; border-top: 1px solid #334155; }
+        .sidebar {
+            width: 260px;
+            background: #1e293b;
+            color: white;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo {
+            padding: 24px;
+            font-size: 20px;
+            font-weight: 700;
+            border-bottom: 1px solid #334155;
+        }
+
+        .logo span {
+            color: #60a5fa;
+        }
+
+        .nav {
+            flex: 1;
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-item {
+            padding: 12px 24px;
+            color: #cbd5e1;
+            cursor: pointer;
+            transition: 0.2s;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-item:hover,
+        .nav-item.active {
+            background: #334155;
+            color: white;
+            border-left: 4px solid var(--primary);
+        }
+
+        .nav-item.logout {
+            margin-top: auto;
+            border-top: 1px solid #334155;
+            border-left: none;
+            color: #ef4444;
+        }
+
+        .nav-item.logout:hover {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+        }
+
+        .nav-item.back-home {
+            border-left: none;
+            border-top: 1px solid #334155;
+        }
 
         /* Main Content */
-        .main { flex: 1; overflow-y: auto; padding: 40px; }
-        .header { margin-bottom: 30px; }
-        .title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-        .subtitle { color: var(--text-muted); }
+        .main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 40px;
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+        }
 
         /* Card Section */
-        .section { display: none; }
-        .section.active { display: block; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .section {
+            display: none;
+        }
 
-        .card { background: var(--surface); border-radius: 12px; padding: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid var(--border); max-width: 600px; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; }
-        input[type="text"], select { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; outline: none; transition: 0.2s; font-size: 15px; }
-        input[type="text"]:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-        .btn { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 15px; cursor: pointer; transition: 0.2s; width: 100%; }
-        .btn:hover { background: var(--primary-hover); }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+            max-width: 600px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            outline: none;
+            transition: 0.2s;
+            font-size: 15px;
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
 
         /* 파일 업로드 영역 */
         .file-drop {
-            border: 2px dashed var(--border); border-radius: 8px;
-            padding: 20px; text-align: center; cursor: pointer;
-            transition: 0.2s; color: var(--text-muted); font-size: 14px;
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+            color: var(--text-muted);
+            font-size: 14px;
             position: relative;
         }
-        .file-drop:hover, .file-drop.dragover { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
-        .file-drop input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-        .file-drop .file-name { font-weight: 600; margin-top: 6px; color: var(--text-main); word-break: break-all; }
-        
-        .toggle-wrap { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-        .toggle-switch { width: 44px; height: 24px; background: #cbd5e1; border-radius: 20px; position: relative; transition: 0.2s; }
-        .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: 0.2s; }
-        input:checked + .toggle-switch { background: var(--primary); }
-        input:checked + .toggle-switch::after { transform: translateX(20px); }
+
+        .file-drop:hover,
+        .file-drop.dragover {
+            border-color: var(--primary);
+            background: #eff6ff;
+            color: var(--primary);
+        }
+
+        .file-drop input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .file-drop .file-name {
+            font-weight: 600;
+            margin-top: 6px;
+            color: var(--text-main);
+            word-break: break-all;
+        }
+
+        .toggle-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .toggle-switch {
+            width: 44px;
+            height: 24px;
+            background: #cbd5e1;
+            border-radius: 20px;
+            position: relative;
+            transition: 0.2s;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        input:checked+.toggle-switch {
+            background: var(--primary);
+        }
+
+        input:checked+.toggle-switch::after {
+            transform: translateX(20px);
+        }
 
         /* Modal Overlay */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
-        .modal-overlay.open { display: flex; }
-        .modal { background: var(--surface); width: 600px; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-        .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
-        .close-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); }
-        .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
-        
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.open {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--surface);
+            width: 600px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .modal-body {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
         /* Progress */
-        .progress-container { width: 100%; height: 12px; background: #e2e8f0; border-radius: 6px; overflow: hidden; position: relative; }
-        .progress-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); transition: width 0.3s ease; }
-        .progress-text { font-size: 14px; font-weight: 600; text-align: right; color: var(--primary); margin-top: -10px; }
+        .progress-container {
+            width: 100%;
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            font-weight: 600;
+            text-align: right;
+            color: var(--primary);
+            margin-top: -10px;
+        }
 
         /* Terminal Console */
-        .console { background: #0f172a; color: #a5b4fc; font-family: monospace; padding: 16px; border-radius: 8px; height: 250px; overflow-y: auto; font-size: 13px; line-height: 1.5; }
-        .console p { margin-bottom: 4px; }
-        .console .success { color: #4ade80; }
-        .console .error { color: #f87171; }
-        .console .warn { color: #fbbf24; }
+        .console {
+            background: #0f172a;
+            color: #a5b4fc;
+            font-family: monospace;
+            padding: 16px;
+            border-radius: 8px;
+            height: 250px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .console p {
+            margin-bottom: 4px;
+        }
+
+        .console .success {
+            color: #4ade80;
+        }
+
+        .console .error {
+            color: #f87171;
+        }
+
+        .console .warn {
+            color: #fbbf24;
+        }
 
         /* Gallery Item */
         .gallery-item {
-            background: #fff; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
-            display: flex; flex-direction: column; align-items: center; padding: 6px; position: relative;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px;
+            position: relative;
         }
-        .gallery-item img { width: 100%; height: 100px; object-fit: contain; background: #f1f5f9; border-radius: 4px; }
-        .gallery-item-title { font-size: 11px; font-weight: 600; color: #374151; margin: 4px 0; text-align: center; }
-        .gallery-item-del { width: 100%; background: #ef4444; color: #fff; border: none; padding: 4px 0; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; }
-        .gallery-item-del:hover { background: #dc2626; }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100px;
+            object-fit: contain;
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+
+        .gallery-item-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #374151;
+            margin: 4px 0;
+            text-align: center;
+        }
+
+        .gallery-item-del {
+            width: 100%;
+            background: #ef4444;
+            color: #fff;
+            border: none;
+            padding: 4px 0;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .gallery-item-del:hover {
+            background: #dc2626;
+        }
 
         @media (max-width: 768px) {
-            body { flex-direction: column; overflow: auto; }
-            .sidebar { width: 100%; height: auto; }
-            .nav { flex-direction: row; flex-wrap: wrap; padding: 10px; gap: 4px; }
-            .nav-item { padding: 8px 12px; font-size: 13px; border-left: none !important; border-radius: 6px; }
-            .nav-item.active { background: #3b82f6; }
-            .nav-item.logout, .nav-item.back-home { border-top: none; }
-            .main { padding: 20px; }
-            .card { padding: 20px; }
-            .modal { width: 90%; margin: 20px; }
-            .form-group[style*="display:flex"] { flex-direction: column; }
+            body {
+                flex-direction: column;
+                overflow: auto;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+            }
+
+            .nav {
+                flex-direction: row;
+                flex-wrap: wrap;
+                padding: 10px;
+                gap: 4px;
+            }
+
+            .nav-item {
+                padding: 8px 12px;
+                font-size: 13px;
+                border-left: none !important;
+                border-radius: 6px;
+            }
+
+            .nav-item.active {
+                background: #3b82f6;
+            }
+
+            .nav-item.logout,
+            .nav-item.back-home {
+                border-top: none;
+            }
+
+            .main {
+                padding: 20px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .modal {
+                width: 90%;
+                margin: 20px;
+            }
+
+            .form-group[style*="display:flex"] {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
+
 <body>
 
-<div class="sidebar">
-    <div class="logo">📚 HYPERX <span>Admin</span></div>
-    <div class="nav">
-        <div class="nav-item active" onclick="switchTab('tab-extract', this)">📄 문제 추출 (PDF)</div>
-        <div class="nav-item" onclick="switchTab('tab-trim', this)">✂️ 여백 일괄 정리</div>
-        <div class="nav-item" onclick="switchTab('tab-build', this)">🏗️ 교재 에셋 생성</div>
-        <div class="nav-item" onclick="switchTab('tab-split', this)">🔪 이미지 분할</div>
-        <div class="nav-item" onclick="switchTab('tab-merge', this)">🔗 이미지 합치기</div>
-        <div class="nav-item" onclick="switchTab('tab-delete', this)">🗑️ 문제 사진 삭제</div>
-        <div class="nav-item" onclick="switchTab('tab-requests', this)">📥 교재 요청 관리</div>
-        <div class="nav-item" onclick="switchTab('tab-github', this)">☁️ GitHub 백업</div>
-        <div class="nav-item logout" onclick="location.href='/logout'">🚪 로그아웃</div>
-        <div class="nav-item back-home" onclick="location.href='/main'">← 메인 대시보드로 돌아가기</div>
-    </div>
-</div>
-
-<div class="main">
-    <div class="header">
-        <div class="title" id="mainTitle">📄 문제 추출 (PDF)</div>
-        <div class="subtitle" id="mainSubtitle">스캔된 PDF 파일에서 문항을 개별 이미지로 자동 추출합니다.</div>
-    </div>
-
-    <!-- 1. 추출 탭 -->
-    <div id="tab-extract" class="section active">
-        <div class="card">
-            <div class="form-group">
-                <label>PDF 파일 선택</label>
-                <div class="file-drop" id="pdfDropZone">
-                    <div>📄 여기를 클릭하거나 PDF를 드래그하세요</div>
-                    <div class="file-name" id="pdfFileName"></div>
-                    <input type="file" id="pdfFile" accept=".pdf" onchange="onFileSelected(this)">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>새 교재 이름 (폴더명)</label>
-                <input type="text" id="workbookName" placeholder="예: 2026_수능특강_수학" required>
-            </div>
-            <div class="form-group">
-                <label class="toggle-wrap">
-                    <input type="checkbox" id="isTwoColumn" style="display:none;" checked>
-                    <div class="toggle-switch"></div>
-                    <span>2단 편집본 (좌/우 나뉨)</span>
-                </label>
-            </div>
-            <button class="btn" id="extractBtn" onclick="runExtract()">추출 시작하기</button>
+    <div class="sidebar">
+        <div class="logo">📚 HYPERX <span>Admin</span></div>
+        <div class="nav">
+            <div class="nav-item active" onclick="switchTab('tab-extract', this)">📄 문제 추출 (PDF)</div>
+            <div class="nav-item" onclick="switchTab('tab-trim', this)">✂️ 여백 일괄 정리</div>
+            <div class="nav-item" onclick="switchTab('tab-build', this)">🏗️ 교재 에셋 생성</div>
+            <div class="nav-item" onclick="switchTab('tab-split', this)">🔪 이미지 분할</div>
+            <div class="nav-item" onclick="switchTab('tab-merge', this)">🔗 이미지 합치기</div>
+            <div class="nav-item" onclick="switchTab('tab-delete', this)">🗑️ 문제 사진 삭제</div>
+            <div class="nav-item" onclick="switchTab('tab-requests', this)">📥 교재 요청 관리</div>
+            <div class="nav-item" onclick="switchTab('tab-github', this)">☁️ GitHub 백업</div>
+            <div class="nav-item logout" onclick="location.href='/logout'">🚪 로그아웃</div>
+            <div class="nav-item back-home" onclick="location.href='/main'">← 메인 대시보드로 돌아가기</div>
         </div>
     </div>
 
-    <!-- 2. 여백 탭 -->
-    <div id="tab-trim" class="section">
-        <div class="card">
-            <div class="form-group">
-                <label>대상 교재 선택</label>
-                <select id="trimFolderSelect"></select>
-            </div>
-            <button class="btn" onclick="runTrim()">여백 정리 시작</button>
+    <div class="main">
+        <div class="header">
+            <div class="title" id="mainTitle">📄 문제 추출 (PDF)</div>
+            <div class="subtitle" id="mainSubtitle">스캔된 PDF 파일에서 문항을 개별 이미지로 자동 추출합니다.</div>
         </div>
-    </div>
 
-    <!-- 3. 교재 에셋 탭 -->
-    <div id="tab-build" class="section">
-        <div class="card">
-            <div class="form-group">
-                <label>대상 교재 선택</label>
-                <select id="buildFolderSelect"></select>
-            </div>
-            <div class="form-group">
-                <label>표지 / 로고 이미지 파일 직접 업로드 <span style="font-weight:400;color:var(--text-muted);">(선택)</span></label>
-                <input type="file" id="coverFile" accept="image/*" style="margin-bottom:8px;">
-            </div>
-            <div class="form-group">
-                <label>표지 이미지 URL <span style="font-weight:400;color:var(--text-muted);">(선택 — URL로 지정할 경우)</span></label>
-                <input type="text" id="coverUrl" placeholder="예: https://example.com/cover.jpg">
-            </div>
-            <button class="btn" id="buildBtn" onclick="runBuild()">HTML/JSON 생성 시작</button>
-        </div>
-    </div>
-
-    <!-- 4. 이미지 분할 탭 -->
-    <div id="tab-split" class="section">
-        <div class="card">
-            <div class="form-group">
-                <label>대상 교재 선택</label>
-                <select id="splitFolderSelect"></select>
-            </div>
-            <div class="form-group">
-                <label>분할할 이미지 번호</label>
-                <input type="text" id="splitNum" placeholder="예: 262" required>
-            </div>
-            <button class="btn" onclick="runSplit()">이미지 분할하기</button>
-        </div>
-    </div>
-
-    <!-- 5. 이미지 합치기 탭 -->
-    <div id="tab-merge" class="section">
-        <div class="card">
-            <div class="form-group">
-                <label>대상 교재 선택</label>
-                <select id="mergeFolderSelect"></select>
-            </div>
-            <div class="form-group" style="display:flex;gap:12px;">
-                <div style="flex:1;">
-                    <label>시작 번호</label>
-                    <input type="text" id="mergeStart" placeholder="예: 5" required>
-                </div>
-                <div style="flex:1;">
-                    <label>끝 번호</label>
-                    <input type="text" id="mergeEnd" placeholder="예: 6" required>
-                </div>
-            </div>
-            <p style="font-size:13px;color:var(--text-muted);margin:-8px 0 16px;">⚠️ 시작~끝 번호를 세로로 이어 붙이고, 이후 번호를 앞으로 당깁니다. 되돌릴 수 없습니다.</p>
-            <button class="btn" onclick="runMerge()">이미지 합치기</button>
-        </div>
-    </div>
-
-    <!-- 6. 이미지 삭제 탭 -->
-    <div id="tab-delete" class="section">
-        <div class="card" style="max-width: 750px;">
-            <div class="form-group">
-                <label>대상 교재 선택</label>
-                <select id="deleteFolderSelect" onchange="loadDeleteFolderGallery()"></select>
-            </div>
-            <div class="form-group" style="display:flex; gap:12px; align-items:flex-end;">
-                <div style="flex:1;">
-                    <label>삭제할 이미지 번호 또는 파일명</label>
-                    <input type="text" id="deleteTargetInput" placeholder="예: 5 또는 005.png">
-                </div>
-                <button class="btn" style="width: auto; padding: 12px 24px; background:#ef4444;" onclick="runDeleteTarget()">🗑️ 이미지 삭제</button>
-            </div>
-            <p style="font-size:13px;color:var(--text-muted);margin:-8px 0 16px;">⚠️ 선택한 문제 이미지를 삭제하고 이후 문항 번호들을 앞으로 당깁니다. (교재 에셋 자동 갱신)</p>
-
-            <label style="margin-top:20px; display:block;">교재 문제 이미지 갤러리 (클릭하여 개별 삭제)</label>
-            <div id="deleteGalleryGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; max-height:380px; overflow-y:auto; padding:10px; background:#f8fafc; border:1px solid var(--border); border-radius:8px;">
-                <!-- 갤러리 렌더링 영역 -->
-            </div>
-        </div>
-    </div>
-
-    <!-- 7. 교재 요청 관리 탭 -->
-    <div id="tab-requests" class="section">
-        <div class="card" style="max-width: 800px; width: 100%;">
-            <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                <thead>
-                    <tr style="border-bottom: 2px solid var(--border);">
-                        <th style="padding: 12px 8px;">상태</th>
-                        <th style="padding: 12px 8px;">요청자</th>
-                        <th style="padding: 12px 8px;">교재명</th>
-                        <th style="padding: 12px 8px;">요청일</th>
-                        <th style="padding: 12px 8px;">관리</th>
-                    </tr>
-                </thead>
-                <tbody id="requestsTableBody">
-                    <!-- 렌더링 영역 -->
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 8. GitHub 백업 탭 -->
-    <div id="tab-github" class="section">
-        <div class="card" style="max-width:600px;">
-            <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
-                <div style="font-size:48px;">☁️</div>
-                <div>
-                    <div style="font-size:20px;font-weight:700;margin-bottom:4px;">GitHub 수동 백업</div>
-                    <div style="color:var(--text-muted);font-size:14px;">현재 변경사항을 즉시 GitHub 저장소에 커밋하고 푸시합니다.</div>
-                </div>
-            </div>
-
-            <!-- 상태 및 토글 설정 -->
-            <div id="githubStatusBox" style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                    <div>
-                        <div style="font-size:15px;font-weight:700;color:var(--text-main);">⏱️ 자동 동기화 (Auto Sync)</div>
-                        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">60초마다 변경사항을 감지하여 GitHub에 자동 저장</div>
+        <!-- 1. 추출 탭 -->
+        <div id="tab-extract" class="section active">
+            <div class="card">
+                <div class="form-group">
+                    <label>PDF 파일 선택</label>
+                    <div class="file-drop" id="pdfDropZone">
+                        <div>📄 여기를 클릭하거나 PDF를 드래그하세요</div>
+                        <div class="file-name" id="pdfFileName"></div>
+                        <input type="file" id="pdfFile" accept=".pdf" onchange="onFileSelected(this)">
                     </div>
-                    <label class="toggle-wrap" style="cursor:pointer;">
-                        <input type="checkbox" id="autoSyncToggle" style="display:none;" onchange="toggleAutoSync(this.checked)">
+                </div>
+                <div class="form-group">
+                    <label>새 교재 이름 (폴더명)</label>
+                    <input type="text" id="workbookName" placeholder="예: 2026_수능특강_수학" required>
+                </div>
+                <div class="form-group">
+                    <label class="toggle-wrap">
+                        <input type="checkbox" id="isTwoColumn" style="display:none;" checked>
                         <div class="toggle-switch"></div>
-                        <span id="autoSyncStatusText" style="font-weight:700;font-size:13px;color:#ef4444;">OFF</span>
+                        <span>2단 편집본 (좌/우 나뉨)</span>
                     </label>
                 </div>
-                <hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;">
-                <div style="font-size:13px;color:var(--text-muted);">📁 대상 저장소: <strong style="color:var(--text-main);">Zenon-Ultra/dhekqapdlzj1</strong></div>
+                <button class="btn" id="extractBtn" onclick="runExtract()">추출 시작하기</button>
             </div>
+        </div>
 
-            <!-- 백업 결과 -->
-            <div id="githubResultBox" style="display:none;border-radius:10px;padding:16px;margin-bottom:20px;font-size:14px;"></div>
+        <!-- 2. 여백 탭 -->
+        <div id="tab-trim" class="section">
+            <div class="card">
+                <div class="form-group">
+                    <label>대상 교재 선택</label>
+                    <select id="trimFolderSelect"></select>
+                </div>
+                <button class="btn" onclick="runTrim()">여백 정리 시작</button>
+            </div>
+        </div>
 
-            <button class="btn" id="githubBackupBtn" onclick="githubBackup()" style="display:flex;align-items:center;justify-content:center;gap:8px;">
-                <span id="githubBackupBtnIcon">🚀</span>
-                <span id="githubBackupBtnText">지금 GitHub에 수동 백업하기</span>
-            </button>
+        <!-- 3. 교재 에셋 탭 -->
+        <div id="tab-build" class="section">
+            <div class="card">
+                <div class="form-group">
+                    <label>대상 교재 선택</label>
+                    <select id="buildFolderSelect"></select>
+                </div>
+                <div class="form-group">
+                    <label>표지 / 로고 이미지 파일 직접 업로드 <span
+                            style="font-weight:400;color:var(--text-muted);">(선택)</span></label>
+                    <input type="file" id="coverFile" accept="image/*" style="margin-bottom:8px;">
+                </div>
+                <div class="form-group">
+                    <label>표지 이미지 URL <span style="font-weight:400;color:var(--text-muted);">(선택 — URL로 지정할
+                            경우)</span></label>
+                    <input type="text" id="coverUrl" placeholder="예: https://example.com/cover.jpg">
+                </div>
+                <button class="btn" id="buildBtn" onclick="runBuild()">HTML/JSON 생성 시작</button>
+            </div>
+        </div>
+
+        <!-- 4. 이미지 분할 탭 -->
+        <div id="tab-split" class="section">
+            <div class="card">
+                <div class="form-group">
+                    <label>대상 교재 선택</label>
+                    <select id="splitFolderSelect"></select>
+                </div>
+                <div class="form-group">
+                    <label>분할할 이미지 번호</label>
+                    <input type="text" id="splitNum" placeholder="예: 262" required>
+                </div>
+                <button class="btn" onclick="runSplit()">이미지 분할하기</button>
+            </div>
+        </div>
+
+        <!-- 5. 이미지 합치기 탭 -->
+        <div id="tab-merge" class="section">
+            <div class="card">
+                <div class="form-group">
+                    <label>대상 교재 선택</label>
+                    <select id="mergeFolderSelect"></select>
+                </div>
+                <div class="form-group" style="display:flex;gap:12px;">
+                    <div style="flex:1;">
+                        <label>시작 번호</label>
+                        <input type="text" id="mergeStart" placeholder="예: 5" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label>끝 번호</label>
+                        <input type="text" id="mergeEnd" placeholder="예: 6" required>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin:-8px 0 16px;">⚠️ 시작~끝 번호를 세로로 이어 붙이고, 이후 번호를 앞으로
+                    당깁니다. 되돌릴 수 없습니다.</p>
+                <button class="btn" onclick="runMerge()">이미지 합치기</button>
+            </div>
+        </div>
+
+        <!-- 6. 이미지 삭제 탭 -->
+        <div id="tab-delete" class="section">
+            <div class="card" style="max-width: 750px;">
+                <div class="form-group">
+                    <label>대상 교재 선택</label>
+                    <select id="deleteFolderSelect" onchange="loadDeleteFolderGallery()"></select>
+                </div>
+                <div class="form-group" style="display:flex; gap:12px; align-items:flex-end;">
+                    <div style="flex:1;">
+                        <label>삭제할 이미지 번호 또는 파일명</label>
+                        <input type="text" id="deleteTargetInput" placeholder="예: 5 또는 005.png">
+                    </div>
+                    <button class="btn" style="width: auto; padding: 12px 24px; background:#ef4444;"
+                        onclick="runDeleteTarget()">🗑️ 이미지 삭제</button>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin:-8px 0 16px;">⚠️ 선택한 문제 이미지를 삭제하고 이후 문항 번호들을 앞으로
+                    당깁니다. (교재 에셋 자동 갱신)</p>
+
+                <label style="margin-top:20px; display:block;">교재 문제 이미지 갤러리 (클릭하여 개별 삭제)</label>
+                <div id="deleteGalleryGrid"
+                    style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:10px; max-height:380px; overflow-y:auto; padding:10px; background:#f8fafc; border:1px solid var(--border); border-radius:8px;">
+                    <!-- 갤러리 렌더링 영역 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. 교재 요청 관리 탭 -->
+        <div id="tab-requests" class="section">
+            <div class="card" style="max-width: 800px; width: 100%;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border);">
+                            <th style="padding: 12px 8px;">상태</th>
+                            <th style="padding: 12px 8px;">요청자</th>
+                            <th style="padding: 12px 8px;">교재명</th>
+                            <th style="padding: 12px 8px;">요청일</th>
+                            <th style="padding: 12px 8px;">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requestsTableBody">
+                        <!-- 렌더링 영역 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 8. GitHub 백업 탭 -->
+        <div id="tab-github" class="section">
+            <div class="card" style="max-width:600px;">
+                <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
+                    <div style="font-size:48px;">☁️</div>
+                    <div>
+                        <div style="font-size:20px;font-weight:700;margin-bottom:4px;">GitHub 수동 백업</div>
+                        <div style="color:var(--text-muted);font-size:14px;">현재 변경사항을 즉시 GitHub 저장소에 커밋하고 푸시합니다.</div>
+                    </div>
+                </div>
+
+                <!-- 상태 및 토글 설정 -->
+                <div id="githubStatusBox"
+                    style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <div>
+                            <div style="font-size:15px;font-weight:700;color:var(--text-main);">⏱️ 자동 동기화 (Auto Sync)
+                            </div>
+                            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">60초마다 변경사항을 감지하여 GitHub에
+                                자동 저장</div>
+                        </div>
+                        <label class="toggle-wrap" style="cursor:pointer;">
+                            <input type="checkbox" id="autoSyncToggle" style="display:none;"
+                                onchange="toggleAutoSync(this.checked)">
+                            <div class="toggle-switch"></div>
+                            <span id="autoSyncStatusText"
+                                style="font-weight:700;font-size:13px;color:#ef4444;">OFF</span>
+                        </label>
+                    </div>
+                    <hr style="border:0;border-top:1px dashed var(--border);margin:12px 0;">
+                    <div style="font-size:13px;color:var(--text-muted);">📁 대상 저장소: <strong
+                            style="color:var(--text-main);">Zenon-Ultra/dhekqapdlzj1</strong></div>
+                </div>
+
+                <!-- 백업 결과 -->
+                <div id="githubResultBox"
+                    style="display:none;border-radius:10px;padding:16px;margin-bottom:20px;font-size:14px;"></div>
+
+                <button class="btn" id="githubBackupBtn" onclick="githubBackup()"
+                    style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <span id="githubBackupBtnIcon">🚀</span>
+                    <span id="githubBackupBtnText">지금 GitHub에 수동 백업하기</span>
+                </button>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Modal -->
-<div class="modal-overlay" id="taskModal">
-    <div class="modal">
-        <div class="modal-header">
-            <span id="modalTitle">작업 진행 중...</span>
-            <button class="close-btn" onclick="closeModal()" id="closeModalBtn" style="display:none;">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="progress-container">
-                <div class="progress-bar" id="progressBar"></div>
+    <!-- Modal -->
+    <div class="modal-overlay" id="taskModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span id="modalTitle">작업 진행 중...</span>
+                <button class="close-btn" onclick="closeModal()" id="closeModalBtn"
+                    style="display:none;">&times;</button>
             </div>
-            <div class="progress-text" id="progressText">0%</div>
-            
-            <div class="console" id="consoleOutput">
-                <!-- Logs will be injected here -->
+            <div class="modal-body">
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <div class="progress-text" id="progressText">0%</div>
+
+                <div class="console" id="consoleOutput">
+                    <!-- Logs will be injected here -->
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-<script>
-    // 탭 전환
-    function switchTab(id, el) {
-        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        el.classList.add('active');
-        
-        const titles = {
-            'tab-extract': ['📄 문제 추출 (PDF)', '스캔된 PDF 파일에서 문항을 개별 이미지로 자동 추출합니다.'],
-            'tab-trim': ['✂️ 여백 일괄 정리', '추출된 문제 이미지들의 잉여 여백을 분석하여 깨끗하게 잘라냅니다.'],
-            'tab-build': ['🏗️ 교재 에셋 생성', '이미지 폴더를 기반으로 뷰어 HTML 및 메타데이터를 자동 생성합니다.'],
-            'tab-split': ['🔪 이미지 분할', '두 문제가 붙어있는 이미지를 반으로 가르고, 이후 번호들을 자동으로 밀어냅니다.'],
-            'tab-merge': ['🔗 이미지 합치기', '연속된 이미지들을 하나로 이어 붙이고, 이후 번호를 앞으로 당깁니다.'],
-            'tab-delete': ['🗑️ 문제 사진 삭제', '교재 내 특정 문제 사진을 선택하여 삭제하고 이후 번호들을 당깁니다.'],
-            'tab-requests': ['📥 교재 요청 관리', '사용자들이 추가를 요청한 교재 목록을 확인하고 관리합니다.'],
-            'tab-github':   ['☁️ GitHub 백업', '현재 변경사항을 GitHub 저장소에 수동으로 즉시 백업합니다.']
-        };
-        document.getElementById('mainTitle').textContent = titles[id][0];
-        document.getElementById('mainSubtitle').textContent = titles[id][1];
-        
-        if(id !== 'tab-extract' && id !== 'tab-requests' && id !== 'tab-github') fetchFolders();
-        if(id === 'tab-delete') setTimeout(loadDeleteFolderGallery, 100);
-        if(id === 'tab-requests') loadRequests();
-        if(id === 'tab-github') { resetGithubResult(); loadAutoSyncStatus(); }
-    }
+    <script>
+        // 탭 전환
+        function switchTab(id, el) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            el.classList.add('active');
 
-    // 폴더 목록 가져오기
-    async function fetchFolders() {
-        try {
-            const res = await fetch('/api/folders');
-            const data = await res.json();
-            const allOption = `<option value="__all__">🌐 [전체 교재 일괄 처리]</option>`;
-            const folderOptions = data.folders.map(f => `<option value="${f}">${f}</option>`).join('');
-            
-            document.getElementById('trimFolderSelect').innerHTML = allOption + folderOptions;
-            document.getElementById('buildFolderSelect').innerHTML = allOption + folderOptions;
-            document.getElementById('splitFolderSelect').innerHTML = folderOptions;
-            document.getElementById('mergeFolderSelect').innerHTML = folderOptions;
-            document.getElementById('deleteFolderSelect').innerHTML = folderOptions;
-        } catch(e) {
-            console.error("폴더 로딩 실패", e);
+            const titles = {
+                'tab-extract': ['📄 문제 추출 (PDF)', '스캔된 PDF 파일에서 문항을 개별 이미지로 자동 추출합니다.'],
+                'tab-trim': ['✂️ 여백 일괄 정리', '추출된 문제 이미지들의 잉여 여백을 분석하여 깨끗하게 잘라냅니다.'],
+                'tab-build': ['🏗️ 교재 에셋 생성', '이미지 폴더를 기반으로 뷰어 HTML 및 메타데이터를 자동 생성합니다.'],
+                'tab-split': ['🔪 이미지 분할', '두 문제가 붙어있는 이미지를 반으로 가르고, 이후 번호들을 자동으로 밀어냅니다.'],
+                'tab-merge': ['🔗 이미지 합치기', '연속된 이미지들을 하나로 이어 붙이고, 이후 번호를 앞으로 당깁니다.'],
+                'tab-delete': ['🗑️ 문제 사진 삭제', '교재 내 특정 문제 사진을 선택하여 삭제하고 이후 번호들을 당깁니다.'],
+                'tab-requests': ['📥 교재 요청 관리', '사용자들이 추가를 요청한 교재 목록을 확인하고 관리합니다.'],
+                'tab-github': ['☁️ GitHub 백업', '현재 변경사항을 GitHub 저장소에 수동으로 즉시 백업합니다.']
+            };
+            document.getElementById('mainTitle').textContent = titles[id][0];
+            document.getElementById('mainSubtitle').textContent = titles[id][1];
+
+            if (id !== 'tab-extract' && id !== 'tab-requests' && id !== 'tab-github') fetchFolders();
+            if (id === 'tab-delete') setTimeout(loadDeleteFolderGallery, 100);
+            if (id === 'tab-requests') loadRequests();
+            if (id === 'tab-github') { resetGithubResult(); loadAutoSyncStatus(); }
         }
-    }
 
-    // 삭제 탭 갤러리 로드
-    async function loadDeleteFolderGallery() {
-        const folder = document.getElementById('deleteFolderSelect').value;
-        const grid = document.getElementById('deleteGalleryGrid');
-        if (!folder || folder === '__all__') {
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">단일 교재를 선택해주세요.</div>';
-            return;
+        // 폴더 목록 가져오기
+        async function fetchFolders() {
+            try {
+                const res = await fetch('/api/folders');
+                const data = await res.json();
+                const allOption = `<option value="__all__">🌐 [전체 교재 일괄 처리]</option>`;
+                const folderOptions = data.folders.map(f => `<option value="${f}">${f}</option>`).join('');
+
+                document.getElementById('trimFolderSelect').innerHTML = allOption + folderOptions;
+                document.getElementById('buildFolderSelect').innerHTML = allOption + folderOptions;
+                document.getElementById('splitFolderSelect').innerHTML = folderOptions;
+                document.getElementById('mergeFolderSelect').innerHTML = folderOptions;
+                document.getElementById('deleteFolderSelect').innerHTML = folderOptions;
+            } catch (e) {
+                console.error("폴더 로딩 실패", e);
+            }
         }
-        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">이미지 불러오는 중...</div>';
-        try {
-            const res = await fetch(`/api/folder_images?folder=${encodeURIComponent(folder)}`);
-            const data = await res.json();
-            const images = data.images || [];
-            if (!images.length) {
-                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">폴더에 이미지가 없습니다.</div>';
+
+        // 삭제 탭 갤러리 로드
+        async function loadDeleteFolderGallery() {
+            const folder = document.getElementById('deleteFolderSelect').value;
+            const grid = document.getElementById('deleteGalleryGrid');
+            if (!folder || folder === '__all__') {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">단일 교재를 선택해주세요.</div>';
                 return;
             }
-            grid.innerHTML = '';
-            images.forEach(imgFile => {
-                const item = document.createElement('div');
-                item.className = 'gallery-item';
-                item.innerHTML = `
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">이미지 불러오는 중...</div>';
+            try {
+                const res = await fetch(`/api/folder_images?folder=${encodeURIComponent(folder)}`);
+                const data = await res.json();
+                const images = data.images || [];
+                if (!images.length) {
+                    grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#9ca3af;">폴더에 이미지가 없습니다.</div>';
+                    return;
+                }
+                grid.innerHTML = '';
+                images.forEach(imgFile => {
+                    const item = document.createElement('div');
+                    item.className = 'gallery-item';
+                    item.innerHTML = `
                     <img src="/img/${folder}/${imgFile}" alt="${imgFile}" onerror="this.src='/img/placeholder.png'">
                     <div class="gallery-item-title">${imgFile}</div>
                     <div style="display:flex;gap:4px;width:100%;margin-top:4px;">
@@ -400,226 +781,226 @@
                         <button class="gallery-item-del" style="flex:1;" onclick="confirmDeleteFile('${folder}', '${imgFile}')">🗑️ 삭제</button>
                     </div>
                 `;
-                grid.appendChild(item);
-            });
-        } catch(e) {
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#ef4444;">이미지 로딩 오류</div>';
-        }
-    }
-
-    async function cropSingleFile(folder, filename) {
-        if (!confirm(`${filename} 이미지의 여백을 자동으로 잘라내시겠습니까?`)) return;
-        try {
-            const res = await fetch(`/api/run/crop_single?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`);
-            const data = await res.json();
-            if (data.ok) {
-                alert(`✅ ${filename} 여백 자르기가 완료되었습니다.`);
-                loadDeleteFolderGallery();
-            } else {
-                alert('❌ 자르기 실패: ' + (data.error || '알 수 없는 오류'));
+                    grid.appendChild(item);
+                });
+            } catch (e) {
+                grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#ef4444;">이미지 로딩 오류</div>';
             }
-        } catch(e) {
-            alert('❌ 서버 연결 실패: ' + e.message);
         }
-    }
 
-    function confirmDeleteFile(folder, filename) {
-        if (confirm(`${filename} 이미지를 삭제하시겠습니까?\n삭제 후 이후 문항 번호가 당겨집니다.`)) {
-            startTask(`/api/run/delete?folder=${encodeURIComponent(folder)}&target=${encodeURIComponent(filename)}`);
-        }
-    }
-
-    function runDeleteTarget() {
-        const folder = document.getElementById('deleteFolderSelect').value;
-        const target = document.getElementById('deleteTargetInput').value.trim();
-        if (!folder || !target) return alert('교재와 삭제할 번호/파일명 입력해주세요.');
-        if (confirm(`${target} 이미지를 삭제하시겠습니까?\n삭제 후 이후 문항 번호가 당겨집니다.`)) {
-            startTask(`/api/run/delete?folder=${encodeURIComponent(folder)}&target=${encodeURIComponent(target)}`);
-        }
-    }
-
-    // SSE 작업 런너
-    let eventSource = null;
-    function startTask(endpoint) {
-        const modal = document.getElementById('taskModal');
-        const consoleOut = document.getElementById('consoleOutput');
-        const bar = document.getElementById('progressBar');
-        const pctText = document.getElementById('progressText');
-        const closeBtn = document.getElementById('closeModalBtn');
-        
-        modal.classList.add('open');
-        consoleOut.innerHTML = '';
-        bar.style.width = '0%';
-        pctText.textContent = '0%';
-        closeBtn.style.display = 'none';
-
-        if (eventSource) eventSource.close();
-        
-        eventSource = new EventSource(endpoint);
-        
-        eventSource.onmessage = function(e) {
-            const data = JSON.parse(e.data);
-            
-            // Add log
-            const p = document.createElement('p');
-            p.textContent = `> ${data.msg}`;
-            if(data.msg.includes('✅') || data.msg.includes('🎉')) p.className = 'success';
-            if(data.msg.includes('🚨')) p.className = 'error';
-            if(data.msg.includes('⚠️')) p.className = 'warn';
-            consoleOut.appendChild(p);
-            consoleOut.scrollTop = consoleOut.scrollHeight;
-
-            // Update Progress
-            if (data.percent !== undefined && data.percent >= 0) {
-                bar.style.width = `${data.percent}%`;
-                pctText.textContent = `${data.percent}%`;
-            }
-
-            // Finish condition
-            if (data.percent === 100 || data.msg.includes('🚨')) {
-                eventSource.close();
-                closeBtn.style.display = 'block';
-                if(data.percent === 100) {
-                    fetchFolders();
+        async function cropSingleFile(folder, filename) {
+            if (!confirm(`${filename} 이미지의 여백을 자동으로 잘라내시겠습니까?`)) return;
+            try {
+                const res = await fetch(`/api/run/crop_single?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`);
+                const data = await res.json();
+                if (data.ok) {
+                    alert(`✅ ${filename} 여백 자르기가 완료되었습니다.`);
                     loadDeleteFolderGallery();
+                } else {
+                    alert('❌ 자르기 실패: ' + (data.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('❌ 서버 연결 실패: ' + e.message);
+            }
+        }
+
+        function confirmDeleteFile(folder, filename) {
+            if (confirm(`${filename} 이미지를 삭제하시겠습니까?\n삭제 후 이후 문항 번호가 당겨집니다.`)) {
+                startTask(`/api/run/delete?folder=${encodeURIComponent(folder)}&target=${encodeURIComponent(filename)}`);
+            }
+        }
+
+        function runDeleteTarget() {
+            const folder = document.getElementById('deleteFolderSelect').value;
+            const target = document.getElementById('deleteTargetInput').value.trim();
+            if (!folder || !target) return alert('교재와 삭제할 번호/파일명 입력해주세요.');
+            if (confirm(`${target} 이미지를 삭제하시겠습니까?\n삭제 후 이후 문항 번호가 당겨집니다.`)) {
+                startTask(`/api/run/delete?folder=${encodeURIComponent(folder)}&target=${encodeURIComponent(target)}`);
+            }
+        }
+
+        // SSE 작업 런너
+        let eventSource = null;
+        function startTask(endpoint) {
+            const modal = document.getElementById('taskModal');
+            const consoleOut = document.getElementById('consoleOutput');
+            const bar = document.getElementById('progressBar');
+            const pctText = document.getElementById('progressText');
+            const closeBtn = document.getElementById('closeModalBtn');
+
+            modal.classList.add('open');
+            consoleOut.innerHTML = '';
+            bar.style.width = '0%';
+            pctText.textContent = '0%';
+            closeBtn.style.display = 'none';
+
+            if (eventSource) eventSource.close();
+
+            eventSource = new EventSource(endpoint);
+
+            eventSource.onmessage = function (e) {
+                const data = JSON.parse(e.data);
+
+                // Add log
+                const p = document.createElement('p');
+                p.textContent = `> ${data.msg}`;
+                if (data.msg.includes('✅') || data.msg.includes('🎉')) p.className = 'success';
+                if (data.msg.includes('🚨')) p.className = 'error';
+                if (data.msg.includes('⚠️')) p.className = 'warn';
+                consoleOut.appendChild(p);
+                consoleOut.scrollTop = consoleOut.scrollHeight;
+
+                // Update Progress
+                if (data.percent !== undefined && data.percent >= 0) {
+                    bar.style.width = `${data.percent}%`;
+                    pctText.textContent = `${data.percent}%`;
+                }
+
+                // Finish condition
+                if (data.percent === 100 || data.msg.includes('🚨')) {
+                    eventSource.close();
+                    closeBtn.style.display = 'block';
+                    if (data.percent === 100) {
+                        fetchFolders();
+                        loadDeleteFolderGallery();
+                    }
+                }
+            };
+
+            eventSource.onerror = function () {
+                eventSource.close();
+                const p = document.createElement('p');
+                p.textContent = "> 서버와의 연결이 끊어졌거나 알 수 없는 오류가 발생했습니다.";
+                p.className = 'error';
+                consoleOut.appendChild(p);
+                closeBtn.style.display = 'block';
+            };
+        }
+
+        function closeModal() {
+            document.getElementById('taskModal').classList.remove('open');
+        }
+
+        // 1. 추출 시작 (파일 업로드 방식)
+        function onFileSelected(input) {
+            const file = input.files[0];
+            if (file) {
+                document.getElementById('pdfFileName').textContent = file.name;
+            }
+        }
+
+        async function runExtract() {
+            const fileInput = document.getElementById('pdfFile');
+            const name = document.getElementById('workbookName').value.trim();
+            const col = document.getElementById('isTwoColumn').checked ? '1' : '0';
+
+            if (!fileInput.files[0] || !name) return alert('파일과 교재 이름을 확인해주세요.');
+
+            const btn = document.getElementById('extractBtn');
+            btn.disabled = true;
+            btn.textContent = '업로드 중...';
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('name', name);
+            try {
+                const res = await fetch('/api/upload_pdf', { method: 'POST', body: formData });
+                if (!res.ok) { const d = await res.json(); throw new Error(d.error || '업로드 실패'); }
+            } catch (e) {
+                btn.disabled = false; btn.textContent = '추출 시작하기';
+                return alert('❌ ' + e.message);
+            }
+
+            btn.textContent = '추출 시작하기';
+            btn.disabled = false;
+
+            startTask(`/api/run/extract?name=${encodeURIComponent(name)}&col=${col}&use_upload=1`);
+        }
+
+        // 2. 여백 정리 시작
+        function runTrim() {
+            const folder = document.getElementById('trimFolderSelect').value;
+            if (!folder) return alert('교재를 선택해주세요.');
+            startTask(`/api/run/trim?folder=${encodeURIComponent(folder)}`);
+        }
+
+        // 3. 교재 에셋 시작
+        async function runBuild() {
+            const folder = document.getElementById('buildFolderSelect').value;
+            const coverFileInput = document.getElementById('coverFile');
+            let coverUrl = document.getElementById('coverUrl').value.trim();
+
+            if (!folder) return alert('교재를 선택해주세요.');
+
+            // 파일 직접 업로드 처리
+            if (coverFileInput && coverFileInput.files && coverFileInput.files[0]) {
+                const btn = document.getElementById('buildBtn');
+                btn.disabled = true;
+                btn.textContent = '표지 이미지 업로드 중...';
+
+                const formData = new FormData();
+                formData.append('folder', folder);
+                formData.append('file', coverFileInput.files[0]);
+
+                try {
+                    const res = await fetch('/api/upload_cover', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (!res.ok || !data.ok) throw new Error(data.error || '표지 업로드 실패');
+                    coverUrl = data.cover_url;
+                } catch (e) {
+                    btn.disabled = false;
+                    btn.textContent = 'HTML/JSON 생성 시작';
+                    return alert('❌ ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'HTML/JSON 생성 시작';
                 }
             }
-        };
-        
-        eventSource.onerror = function() {
-            eventSource.close();
-            const p = document.createElement('p');
-            p.textContent = "> 서버와의 연결이 끊어졌거나 알 수 없는 오류가 발생했습니다.";
-            p.className = 'error';
-            consoleOut.appendChild(p);
-            closeBtn.style.display = 'block';
-        };
-    }
 
-    function closeModal() {
-        document.getElementById('taskModal').classList.remove('open');
-    }
-
-    // 1. 추출 시작 (파일 업로드 방식)
-    function onFileSelected(input) {
-        const file = input.files[0];
-        if (file) {
-            document.getElementById('pdfFileName').textContent = file.name;
-        }
-    }
-
-    async function runExtract() {
-        const fileInput = document.getElementById('pdfFile');
-        const name = document.getElementById('workbookName').value.trim();
-        const col = document.getElementById('isTwoColumn').checked ? '1' : '0';
-
-        if (!fileInput.files[0] || !name) return alert('파일과 교재 이름을 확인해주세요.');
-
-        const btn = document.getElementById('extractBtn');
-        btn.disabled = true;
-        btn.textContent = '업로드 중...';
-
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-        formData.append('name', name);
-        try {
-            const res = await fetch('/api/upload_pdf', { method: 'POST', body: formData });
-            if (!res.ok) { const d = await res.json(); throw new Error(d.error || '업로드 실패'); }
-        } catch(e) {
-            btn.disabled = false; btn.textContent = '추출 시작하기';
-            return alert('❌ ' + e.message);
+            let ep = `/api/run/build?folder=${encodeURIComponent(folder)}`;
+            if (coverUrl) ep += `&cover_url=${encodeURIComponent(coverUrl)}`;
+            startTask(ep);
         }
 
-        btn.textContent = '추출 시작하기';
-        btn.disabled = false;
+        // 4. 이미지 분할 시작
+        function runSplit() {
+            const folder = document.getElementById('splitFolderSelect').value;
+            const num = document.getElementById('splitNum').value;
+            if (!folder || !num) return alert('교재와 번호를 입력해주세요.');
+            startTask(`/api/run/split?folder=${encodeURIComponent(folder)}&num=${encodeURIComponent(num)}`);
+        }
 
-        startTask(`/api/run/extract?name=${encodeURIComponent(name)}&col=${col}&use_upload=1`);
-    }
+        // 5. 이미지 합치기
+        function runMerge() {
+            const folder = document.getElementById('mergeFolderSelect').value;
+            const start = document.getElementById('mergeStart').value.trim();
+            const end = document.getElementById('mergeEnd').value.trim();
+            if (!folder || !start || !end) return alert('교재, 시작 번호, 끝 번호를 모두 입력해주세요.');
+            if (parseInt(start) >= parseInt(end)) return alert('시작 번호는 끝 번호보다 작아야 합니다.');
+            const ok = confirm(`${start}번 ~ ${end}번 이미지를 합치시겠습니까?\n이후 번호가 앞으로 당겨집니다. 되돌릴 수 없습니다.`);
+            if (!ok) return;
+            startTask(`/api/run/merge?folder=${encodeURIComponent(folder)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+        }
 
-    // 2. 여백 정리 시작
-    function runTrim() {
-        const folder = document.getElementById('trimFolderSelect').value;
-        if(!folder) return alert('교재를 선택해주세요.');
-        startTask(`/api/run/trim?folder=${encodeURIComponent(folder)}`);
-    }
-
-    // 3. 교재 에셋 시작
-    async function runBuild() {
-        const folder = document.getElementById('buildFolderSelect').value;
-        const coverFileInput = document.getElementById('coverFile');
-        let coverUrl = document.getElementById('coverUrl').value.trim();
-
-        if(!folder) return alert('교재를 선택해주세요.');
-
-        // 파일 직접 업로드 처리
-        if (coverFileInput && coverFileInput.files && coverFileInput.files[0]) {
-            const btn = document.getElementById('buildBtn');
-            btn.disabled = true;
-            btn.textContent = '표지 이미지 업로드 중...';
-            
-            const formData = new FormData();
-            formData.append('folder', folder);
-            formData.append('file', coverFileInput.files[0]);
-
+        // ── 교재 요청 관리 ──
+        async function loadRequests() {
             try {
-                const res = await fetch('/api/upload_cover', { method: 'POST', body: formData });
+                const res = await fetch('/api/admin/book_requests');
                 const data = await res.json();
-                if (!res.ok || !data.ok) throw new Error(data.error || '표지 업로드 실패');
-                coverUrl = data.cover_url;
-            } catch(e) {
-                btn.disabled = false;
-                btn.textContent = 'HTML/JSON 생성 시작';
-                return alert('❌ ' + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'HTML/JSON 생성 시작';
-            }
-        }
+                const tbody = document.getElementById('requestsTableBody');
+                tbody.innerHTML = '';
+                if (data.requests && data.requests.length > 0) {
+                    data.requests.forEach(req => {
+                        const statusBadge = req.status === 'pending'
+                            ? '<span style="background:#fef3c7;color:#d97706;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">대기중</span>'
+                            : '<span style="background:#d1fae5;color:#059669;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">완료</span>';
 
-        let ep = `/api/run/build?folder=${encodeURIComponent(folder)}`;
-        if (coverUrl) ep += `&cover_url=${encodeURIComponent(coverUrl)}`;
-        startTask(ep);
-    }
-
-    // 4. 이미지 분할 시작
-    function runSplit() {
-        const folder = document.getElementById('splitFolderSelect').value;
-        const num = document.getElementById('splitNum').value;
-        if(!folder || !num) return alert('교재와 번호를 입력해주세요.');
-        startTask(`/api/run/split?folder=${encodeURIComponent(folder)}&num=${encodeURIComponent(num)}`);
-    }
-
-    // 5. 이미지 합치기
-    function runMerge() {
-        const folder = document.getElementById('mergeFolderSelect').value;
-        const start  = document.getElementById('mergeStart').value.trim();
-        const end    = document.getElementById('mergeEnd').value.trim();
-        if (!folder || !start || !end) return alert('교재, 시작 번호, 끝 번호를 모두 입력해주세요.');
-        if (parseInt(start) >= parseInt(end)) return alert('시작 번호는 끝 번호보다 작아야 합니다.');
-        const ok = confirm(`${start}번 ~ ${end}번 이미지를 합치시겠습니까?\n이후 번호가 앞으로 당겨집니다. 되돌릴 수 없습니다.`);
-        if (!ok) return;
-        startTask(`/api/run/merge?folder=${encodeURIComponent(folder)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
-    }
-
-    // ── 교재 요청 관리 ──
-    async function loadRequests() {
-        try {
-            const res = await fetch('/api/admin/book_requests');
-            const data = await res.json();
-            const tbody = document.getElementById('requestsTableBody');
-            tbody.innerHTML = '';
-            if (data.requests && data.requests.length > 0) {
-                data.requests.forEach(req => {
-                    const statusBadge = req.status === 'pending' 
-                        ? '<span style="background:#fef3c7;color:#d97706;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">대기중</span>' 
-                        : '<span style="background:#d1fae5;color:#059669;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">완료</span>';
-                    
-                    const actions = req.status === 'pending'
-                        ? `<button class="btn" style="padding:6px 12px; font-size:12px; margin-right:4px;" onclick="completeRequest(${req.id})">완료 처리</button>`
-                        : '';
-                    const tr = document.createElement('tr');
-                    tr.style.borderBottom = '1px solid var(--border)';
-                    tr.innerHTML = `
+                        const actions = req.status === 'pending'
+                            ? `<button class="btn" style="padding:6px 12px; font-size:12px; margin-right:4px;" onclick="completeRequest(${req.id})">완료 처리</button>`
+                            : '';
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid var(--border)';
+                        tr.innerHTML = `
                         <td style="padding: 12px 8px;">${statusBadge}</td>
                         <td style="padding: 12px 8px; font-weight:500;">${req.username}</td>
                         <td style="padding: 12px 8px;">${req.book_name}</td>
@@ -629,138 +1010,172 @@
                             <button class="btn" style="padding:6px 12px; font-size:12px; background:#ef4444;" onclick="deleteRequest(${req.id})">삭제</button>
                         </td>
                     `;
-                    tbody.appendChild(tr);
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color:var(--text-muted);">요청된 교재가 없습니다.</td></tr>';
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    }
-
-    async function completeRequest(id) {
-        if (!confirm('이 교재 요청을 완료 처리하시겠습니까? (사용자의 대기중 표시가 사라집니다)')) return;
-        try {
-            await fetch('/api/admin/book_requests/' + id + '/complete', { method: 'POST' });
-            loadRequests();
-        } catch (e) { console.error(e); }
-    }
-
-    async function deleteRequest(id) {
-        if (!confirm('이 교재 요청을 삭제하시겠습니까?')) return;
-        try {
-            await fetch('/api/admin/book_requests/' + id, { method: 'DELETE' });
-            loadRequests();
-        } catch (e) { console.error(e); }
-    }
-
-    // ── GitHub 백업 ──
-    function resetGithubResult() {
-        const box = document.getElementById('githubResultBox');
-        box.style.display = 'none';
-        box.innerHTML = '';
-        const btn = document.getElementById('githubBackupBtn');
-        btn.disabled = false;
-        document.getElementById('githubBackupBtnIcon').textContent = '🚀';
-        document.getElementById('githubBackupBtnText').textContent = '지금 GitHub에 백업하기';
-    }
-
-    async function githubBackup() {
-        const btn = document.getElementById('githubBackupBtn');
-        const icon = document.getElementById('githubBackupBtnIcon');
-        const text = document.getElementById('githubBackupBtnText');
-        const resultBox = document.getElementById('githubResultBox');
-
-        btn.disabled = true;
-        icon.textContent = '⏳';
-        text.textContent = '백업 중...';
-        resultBox.style.display = 'none';
-
-        try {
-            const res = await fetch('/api/admin/github_backup', { method: 'POST' });
-            const data = await res.json();
-
-            resultBox.style.display = 'block';
-            if (data.ok) {
-                if (data.changed) {
-                    resultBox.style.background = '#d1fae5';
-                    resultBox.style.border = '1px solid #6ee7b7';
-                    resultBox.style.color = '#065f46';
-                    resultBox.innerHTML = `
-                        <div style="font-size:20px;margin-bottom:8px;">✅ 백업 완료!</div>
-                        <div style="font-size:13px;opacity:0.85;">${data.commit}</div>
-                    `;
+                        tbody.appendChild(tr);
+                    });
                 } else {
-                    resultBox.style.background = '#eff6ff';
-                    resultBox.style.border = '1px solid #93c5fd';
-                    resultBox.style.color = '#1e40af';
-                    resultBox.innerHTML = '<div style="font-size:16px;">ℹ️ ' + data.message + '</div>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color:var(--text-muted);">요청된 교재가 없습니다.</td></tr>';
                 }
-                icon.textContent = '✅';
-                text.textContent = '백업 완료';
-            } else {
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function completeRequest(id) {
+            if (!confirm('이 교재 요청을 완료 처리하시겠습니까? (사용자의 대기중 표시가 사라집니다)')) return;
+            try {
+                await fetch('/api/admin/book_requests/' + id + '/complete', { method: 'POST' });
+                loadRequests();
+            } catch (e) { console.error(e); }
+        }
+
+        async function deleteRequest(id) {
+            if (!confirm('이 교재 요청을 삭제하시겠습니까?')) return;
+            try {
+                await fetch('/api/admin/book_requests/' + id, { method: 'DELETE' });
+                loadRequests();
+            } catch (e) { console.error(e); }
+        }
+
+        // ── GitHub 백업 ──
+        function resetGithubResult() {
+            const box = document.getElementById('githubResultBox');
+            box.style.display = 'none';
+            box.innerHTML = '';
+            const btn = document.getElementById('githubBackupBtn');
+            btn.disabled = false;
+            document.getElementById('githubBackupBtnIcon').textContent = '🚀';
+            document.getElementById('githubBackupBtnText').textContent = '지금 GitHub에 백업하기';
+        }
+
+        async function githubBackup() {
+            const btn = document.getElementById('githubBackupBtn');
+            const icon = document.getElementById('githubBackupBtnIcon');
+            const text = document.getElementById('githubBackupBtnText');
+            const resultBox = document.getElementById('githubResultBox');
+
+            btn.disabled = true;
+            icon.textContent = '⏳';
+            text.textContent = 'GitHub & Google Drive 백업 진행 중...';
+            resultBox.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/admin/github_backup', { method: 'POST' });
+                const data = await res.json();
+
+                resultBox.style.display = 'block';
+
+                if (!res.ok && data.error) {
+                    resultBox.style.background = '#fee2e2';
+                    resultBox.style.border = '1px solid #fca5a5';
+                    resultBox.style.color = '#991b1b';
+                    resultBox.innerHTML = `<div style="font-size:16px;">🚨 오류: ${data.error}</div>`;
+                    icon.textContent = '🚨';
+                    text.textContent = '백업 실패 — 다시 시도';
+                    btn.disabled = false;
+                    return;
+                }
+
+                const ghOk = data.github_ok;
+                const gdOk = data.gdrive_ok;
+
+                const ghBadge = ghOk ? '✅ GitHub: 성공' : '❌ GitHub: 실패';
+                const gdBadge = gdOk ? '✅ Google Drive: 성공' : '❌ Google Drive: 실패';
+
+                let boxBg = '#eff6ff';
+                let boxBorder = '#93c5fd';
+                let boxColor = '#1e40af';
+
+                if (ghOk && gdOk) {
+                    boxBg = '#d1fae5';
+                    boxBorder = '#6ee7b7';
+                    boxColor = '#065f46';
+                    icon.textContent = '✅';
+                    text.textContent = '통합 백업 완료';
+                } else if (ghOk || gdOk) {
+                    boxBg = '#fef3c7';
+                    boxBorder = '#fcd34d';
+                    boxColor = '#92400e';
+                    icon.textContent = '⚠️';
+                    text.textContent = '부분 완료 (상세 확인)';
+                } else {
+                    boxBg = '#fee2e2';
+                    boxBorder = '#fca5a5';
+                    boxColor = '#991b1b';
+                    icon.textContent = '🚨';
+                    text.textContent = '백업 실패 — 다시 시도';
+                }
+
+                btn.disabled = false;
+
+                resultBox.style.background = boxBg;
+                resultBox.style.border = `1px solid ${boxBorder}`;
+                resultBox.style.color = boxColor;
+
+                resultBox.innerHTML = `
+                <div style="font-size:17px;font-weight:700;margin-bottom:10px;">📦 수동 통합 백업 결과</div>
+                <div style="font-size:14px;margin-bottom:6px;">
+                    <strong>${ghBadge}</strong>
+                    <div style="font-size:12px;opacity:0.85;margin-top:2px;">${data.github_msg}</div>
+                </div>
+                <div style="font-size:14px;">
+                    <strong>${gdBadge}</strong>
+                    <div style="font-size:12px;opacity:0.85;margin-top:2px;">${data.gdrive_msg}</div>
+                </div>
+            `;
+            } catch (e) {
+                resultBox.style.display = 'block';
                 resultBox.style.background = '#fee2e2';
                 resultBox.style.border = '1px solid #fca5a5';
                 resultBox.style.color = '#991b1b';
-                resultBox.innerHTML = '<div style="font-size:16px;">🚨 오류: ' + (data.error || '알 수 없는 오류') + '</div>';
+                resultBox.innerHTML = '<div>🚨 통신 오류: ' + e.message + '</div>';
                 icon.textContent = '🚨';
                 text.textContent = '백업 실패 — 다시 시도';
                 btn.disabled = false;
             }
-        } catch (e) {
-            resultBox.style.display = 'block';
-            resultBox.style.background = '#fee2e2';
-            resultBox.style.border = '1px solid #fca5a5';
-            resultBox.style.color = '#991b1b';
-            resultBox.innerHTML = '<div>🚨 네트워크 오류: ' + e.message + '</div>';
-            icon.textContent = '🚨';
-            text.textContent = '백업 실패 — 다시 시도';
-            btn.disabled = false;
         }
-    }
 
-    // ── 자동 동기화 ON/OFF 제어 ──
-    async function loadAutoSyncStatus() {
-        try {
-            const res = await fetch('/api/admin/github_auto_sync');
-            const data = await res.json();
-            const toggle = document.getElementById('autoSyncToggle');
-            const statusText = document.getElementById('autoSyncStatusText');
-            if (toggle && statusText) {
-                toggle.checked = !!data.enabled;
-                statusText.textContent = data.enabled ? 'ON' : 'OFF';
-                statusText.style.color = data.enabled ? '#10b981' : '#ef4444';
+        // ── 자동 동기화 ON/OFF 제어 ──
+        async function loadAutoSyncStatus() {
+            try {
+                const res = await fetch('/api/admin/github_auto_sync');
+                const data = await res.json();
+                const toggle = document.getElementById('autoSyncToggle');
+                const statusText = document.getElementById('autoSyncStatusText');
+                if (toggle && statusText) {
+                    toggle.checked = !!data.enabled;
+                    statusText.textContent = data.enabled ? 'ON' : 'OFF';
+                    statusText.style.color = data.enabled ? '#10b981' : '#ef4444';
+                }
+            } catch (e) {
+                console.error('Auto sync status fetch error:', e);
             }
-        } catch (e) {
-            console.error('Auto sync status fetch error:', e);
         }
-    }
 
-    async function toggleAutoSync(enabled) {
-        const statusText = document.getElementById('autoSyncStatusText');
-        if (statusText) {
-            statusText.textContent = enabled ? 'ON' : 'OFF';
-            statusText.style.color = enabled ? '#10b981' : '#ef4444';
+        async function toggleAutoSync(enabled) {
+            const statusText = document.getElementById('autoSyncStatusText');
+            if (statusText) {
+                statusText.textContent = enabled ? 'ON' : 'OFF';
+                statusText.style.color = enabled ? '#10b981' : '#ef4444';
+            }
+            try {
+                await fetch('/api/admin/github_auto_sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+            } catch (e) {
+                console.error('Toggle auto sync error:', e);
+            }
         }
-        try {
-            await fetch('/api/admin/github_auto_sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: enabled })
-            });
-        } catch (e) {
-            console.error('Toggle auto sync error:', e);
-        }
-    }
 
-    window.onload = function() {
-        fetchFolders();
-        loadAutoSyncStatus();
-        if (document.getElementById('tab-requests').classList.contains('active')) {
-            loadRequests();
-        }
-    };
-</script>
+        window.onload = function () {
+            fetchFolders();
+            loadAutoSyncStatus();
+            if (document.getElementById('tab-requests').classList.contains('active')) {
+                loadRequests();
+            }
+        };
+    </script>
 </body>
+
 </html>

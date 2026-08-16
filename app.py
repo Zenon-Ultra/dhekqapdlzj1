@@ -695,14 +695,11 @@ def admin_delete_book_request(req_id):
 @app.route('/api/admin/github_backup', methods=['POST'])
 @admin_required
 def github_backup():
-    """관리자가 수동으로 GitHub에 즉시 백업합니다."""
+    """관리자가 수동으로 GitHub 커밋/푸시 및 Google Drive ZIP 업로드를 즉시 수행합니다."""
     import subprocess, time, shutil
-    token = os.environ.get('GITHUB_TOKEN')
-    if not token:
-        return jsonify({'ok': False, 'error': 'GITHUB_TOKEN 환경변수가 설정되지 않았습니다.'}), 500
+    from services.gdrive_backup import backup_to_google_drive
 
     cwd = os.path.dirname(os.path.abspath(__file__))
-    repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
     lock_file = os.path.join(cwd, '.git_sync.lock')
 
     # 락 확인 및 오랫동안 지연된 락 강제 해제 (30초 초과 시)
@@ -713,57 +710,98 @@ def github_backup():
             except Exception:
                 pass
         else:
-            return jsonify({'ok': False, 'error': '다른 동기화 작업이 진행 중입니다. 10초 후 다시 시도해주세요.'}), 409
+            return jsonify({'ok': False, 'error': '다른 백업/동기화 작업이 진행 중입니다. 10초 후 다시 시도해주세요.'}), 409
+
+    github_ok = False
+    github_msg = ""
+    github_error = None
+    commit_msg = None
+    changed = False
+
+    gdrive_ok = False
+    gdrive_msg = ""
+    zip_name = None
 
     try:
         with open(lock_file, 'w') as f:
             f.write(str(time.time()))
 
-        remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd).stdout.splitlines()
-        if 'origin' in remotes:
-            subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
+        # ── 1. GitHub 백업 단계 ──
+        token = os.environ.get('GITHUB_TOKEN')
+        if not token:
+            github_ok = False
+            github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
         else:
-            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False)
+            try:
+                repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
+                remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd).stdout.splitlines()
+                if 'origin' in remotes:
+                    subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
+                else:
+                    subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False)
 
-        subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False)
-        subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False)
+                subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False)
+                subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False)
 
-        # 꼬여있는 rebase 잔여 폴더 강제 제거 및 abort (실제 rebase 중일 때만 수행)
-        has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
-        if has_rebase:
-            subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False)
-            for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
-                reb_path = os.path.join(cwd, reb_dir)
-                if os.path.exists(reb_path):
-                    shutil.rmtree(reb_path, ignore_errors=True)
+                has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
+                if has_rebase:
+                    subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False)
+                    for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
+                        reb_path = os.path.join(cwd, reb_dir)
+                        if os.path.exists(reb_path):
+                            shutil.rmtree(reb_path, ignore_errors=True)
 
-        status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd)
-        changed_files = status.stdout.strip()
+                status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd)
+                changed_files = status.stdout.strip()
 
-        if not changed_files:
-            return jsonify({'ok': True, 'message': '변경된 파일이 없습니다. GitHub는 이미 최신 상태입니다.', 'changed': False})
+                if not changed_files:
+                    github_ok = True
+                    github_msg = "변경된 코드가 없습니다. GitHub는 이미 최신 상태입니다."
+                    changed = False
+                else:
+                    subprocess.run(['git', 'add', '.'], cwd=cwd, check=True)
+                    commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
+                    subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True)
 
-        subprocess.run(['git', 'add', '.'], cwd=cwd, check=True)
-        commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
-        subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True)
+                    result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False)
+                        result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
 
-        # Git Push 시도 (실패 시 fetch 후 push)
-        result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
-        if result.returncode != 0:
-            subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False)
-            result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        raise Exception(result.stderr or 'Push 실패')
 
-        if result.returncode != 0:
-            raise Exception(result.stderr or 'Push 실패')
+                    github_ok = True
+                    github_msg = f"GitHub 커밋/푸시 완료! ({commit_msg})"
+                    changed = True
+
+            except Exception as gh_e:
+                github_ok = False
+                github_error = str(gh_e)
+
+        # ── 2. Google Drive ZIP 백업 단계 ──
+        try:
+            gdrive_ok, gdrive_msg, zip_name = backup_to_google_drive(cwd)
+        except Exception as gd_e:
+            gdrive_ok = False
+            gdrive_msg = f"Google Drive 백업 예외: {gd_e}"
+
+        overall_ok = github_ok and gdrive_ok
 
         return jsonify({
-            'ok': True,
-            'message': 'GitHub 백업 완료!',
-            'changed': True,
+            'ok': overall_ok,
+            'github_ok': github_ok,
+            'github_msg': github_msg or github_error or 'GitHub 백업 대기',
+            'github_error': github_error,
+            'gdrive_ok': gdrive_ok,
+            'gdrive_msg': gdrive_msg,
+            'zip_name': zip_name,
+            'changed': changed,
             'commit': commit_msg
         })
+
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        return jsonify({'ok': False, 'error': f'백업 처리 중 예외 발생: {e}'}), 500
     finally:
         if os.path.exists(lock_file):
             try:
