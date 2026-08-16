@@ -744,6 +744,19 @@ BACKUP_TASK_STATUS = {
     'start_time': 0
 }
 
+# ZIP 다운로드 백그라운드 작업 상태
+ZIP_TASK_STATUS = {
+    'running': False,
+    'ready': False,
+    'error': None,
+    'filepath': None,
+    'filename': None,
+    'percent': 0,
+    'current_file': '',
+    'total_files': 0,
+    'done_files': 0,
+}
+
 def execute_backup_background(cwd):
     global BACKUP_TASK_STATUS
     import subprocess, time, shutil
@@ -883,32 +896,145 @@ def github_backup():
         'message': 'GitHub 백업이 시작되었습니다.'
     })
 
+def _run_zip_background(cwd):
+    """백그라운드 스레드에서 ZIP 파일을 생성하고 진행 상태를 파일에 기록합니다."""
+    global ZIP_TASK_STATUS
+    from services.backup import create_project_zip, _write_status
+
+    base = {
+        'running': True, 'ready': False, 'error': None,
+        'filepath': None, 'filename': None,
+        'percent': 0, 'current_file': '', 'total_files': 0, 'done_files': 0,
+    }
+    ZIP_TASK_STATUS.update(base)
+    _write_status(base)
+    print("[ZIP Task] Starting ZIP creation...", flush=True)
+
+    try:
+        def _on_progress(current, total, filename):
+            pct = int(current / total * 100) if total else 0
+            ZIP_TASK_STATUS['done_files'] = current
+            ZIP_TASK_STATUS['total_files'] = total
+            ZIP_TASK_STATUS['percent'] = pct
+            ZIP_TASK_STATUS['current_file'] = filename
+            # 10파일마다 파일에 기록 (I/O 과부하 방지)
+            if current % 10 == 0 or current == total:
+                _write_status({
+                    'running': True, 'ready': False, 'error': None,
+                    'filepath': None, 'filename': None,
+                    'percent': pct, 'current_file': filename,
+                    'total_files': total, 'done_files': current,
+                })
+
+        zip_filepath, zip_filename = create_project_zip(cwd, progress_callback=_on_progress)
+
+        done = {
+            'running': False, 'ready': True, 'error': None,
+            'filepath': zip_filepath, 'filename': zip_filename,
+            'percent': 100, 'current_file': '',
+            'total_files': ZIP_TASK_STATUS['total_files'],
+            'done_files': ZIP_TASK_STATUS['total_files'],
+        }
+        ZIP_TASK_STATUS.update(done)
+        _write_status(done)
+        print(f"[ZIP Task] Done: {zip_filename}", flush=True)
+
+    except Exception as e:
+        err = {
+            'running': False, 'ready': False, 'error': str(e),
+            'filepath': None, 'filename': None,
+            'percent': ZIP_TASK_STATUS.get('percent', 0),
+            'current_file': '', 'total_files': ZIP_TASK_STATUS.get('total_files', 0),
+            'done_files': ZIP_TASK_STATUS.get('done_files', 0),
+        }
+        ZIP_TASK_STATUS.update(err)
+        _write_status(err)
+        print(f"[ZIP Task] Error: {e}", flush=True)
+    finally:
+        ZIP_TASK_STATUS['running'] = False
+
+@app.route('/api/admin/prepare_backup_zip', methods=['POST'])
+@admin_required
+def prepare_backup_zip():
+    """ZIP 압축을 백그라운드에서 시작합니다. 완료 여부는 /api/admin/backup_zip_status로 폴링하세요."""
+    import threading
+    global ZIP_TASK_STATUS
+
+    if ZIP_TASK_STATUS['running']:
+        return jsonify({'ok': False, 'error': '이미 ZIP 생성이 진행 중입니다.'}), 409
+
+    # 이전 ZIP 파일 정리
+    old_path = ZIP_TASK_STATUS.get('filepath')
+    if old_path and os.path.exists(old_path):
+        try:
+            os.remove(old_path)
+        except Exception:
+            pass
+
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    t = threading.Thread(target=_run_zip_background, args=(cwd,), daemon=True)
+    t.start()
+    return jsonify({'ok': True, 'message': 'ZIP 생성이 시작되었습니다. 상태를 폴링하세요.'})
+
+@app.route('/api/admin/backup_zip_status', methods=['GET'])
+@admin_required
+def backup_zip_status():
+    """ZIP 생성 진행 상태를 반환합니다. 파일 기반 상태를 우선 읽어 워커 재시작에도 안전합니다."""
+    from services.backup import read_zip_status
+    # 파일 기반 상태(워커 재시작 대비) 우선, 없으면 인메모리 폴백
+    s = read_zip_status()
+    # 인메모리 상태가 더 최신인 경우(같은 워커) 덮어씀
+    if ZIP_TASK_STATUS.get('done_files', 0) >= s.get('done_files', 0):
+        s = dict(ZIP_TASK_STATUS)
+    return jsonify({
+        'ok': True,
+        'running': s.get('running', False),
+        'ready': s.get('ready', False),
+        'error': s.get('error'),
+        'filename': s.get('filename'),
+        'percent': s.get('percent', 0),
+        'current_file': s.get('current_file', ''),
+        'total_files': s.get('total_files', 0),
+        'done_files': s.get('done_files', 0),
+    })
+
 @app.route('/api/admin/download_backup_zip', methods=['GET'])
 @admin_required
 def download_backup_zip():
-    """현재 프로젝트 소스, 이미지, 데이터베이스(admin.db)를 ZIP으로 즉시 압축하여 브라우저로 직접 다운로드합니다."""
-    from services.backup import create_project_zip
-    cwd = os.path.dirname(os.path.abspath(__file__))
-    try:
-        zip_filepath, zip_filename = create_project_zip(cwd)
+    """백그라운드에서 생성된 ZIP 파일을 다운로드합니다. prepare_backup_zip 후 ready 상태일 때 호출하세요."""
+    from services.backup import read_zip_status
+    global ZIP_TASK_STATUS
 
-        @after_this_request
-        def remove_file(response):
-            try:
-                if os.path.exists(zip_filepath):
-                    os.remove(zip_filepath)
-            except Exception:
-                pass
-            return response
+    # 파일 기반 상태와 인메모리 상태 중 ready인 것 우선
+    s = read_zip_status()
+    if ZIP_TASK_STATUS.get('ready'):
+        s = dict(ZIP_TASK_STATUS)
 
-        return send_file(
-            zip_filepath,
-            as_attachment=True,
-            download_name=zip_filename,
-            mimetype='application/zip'
-        )
-    except Exception as e:
-        return jsonify({'ok': False, 'error': f'ZIP 압축 다운로드 생성 실패: {e}'}), 500
+    zip_filepath = s.get('filepath')
+    zip_filename = s.get('filename')
+
+    if not ZIP_TASK_STATUS['ready'] or not zip_filepath or not os.path.exists(zip_filepath):
+        return jsonify({'ok': False, 'error': 'ZIP 파일이 아직 준비되지 않았습니다. 먼저 prepare_backup_zip을 호출하세요.'}), 400
+
+    @after_this_request
+    def remove_file(response):
+        try:
+            if os.path.exists(zip_filepath):
+                os.remove(zip_filepath)
+        except Exception:
+            pass
+        # 상태 초기화
+        ZIP_TASK_STATUS['ready'] = False
+        ZIP_TASK_STATUS['filepath'] = None
+        ZIP_TASK_STATUS['filename'] = None
+        return response
+
+    return send_file(
+        zip_filepath,
+        as_attachment=True,
+        download_name=zip_filename,
+        mimetype='application/zip'
+    )
 
 @app.route('/api/admin/github_backup_status', methods=['GET'])
 @admin_required

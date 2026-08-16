@@ -658,10 +658,23 @@
                             <div style="font-size:13px;color:#3b82f6;margin-top:2px;">모든 교재 에셋, 이미지, 데이터베이스(admin.db)를 ZIP으로 압축하여 즉시 받습니다.</div>
                         </div>
                     </div>
-                    <button class="btn" onclick="downloadBackupZip()" style="background:linear-gradient(135deg, #2563eb, #1d4ed8);display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-weight:700;">
-                        <span>📥</span>
-                        <span>백업 ZIP 파일 지금 다운로드</span>
+                    <button id="zipDownloadBtn" class="btn" onclick="downloadBackupZip()" style="background:linear-gradient(135deg, #2563eb, #1d4ed8);display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;font-weight:700;">
+                        <span id="zipDownloadBtnIcon">📥</span>
+                        <span id="zipDownloadBtnText">백업 ZIP 파일 지금 다운로드</span>
                     </button>
+
+                    <!-- 진행 상태 영역 -->
+                    <div id="zipProgressArea" style="display:none;margin-top:14px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <span id="zipProgressLabel" style="font-size:12px;font-weight:600;color:#1e40af;">⚙️ 압축 중...</span>
+                            <span id="zipProgressPct" style="font-size:13px;font-weight:700;color:#1e40af;">0%</span>
+                        </div>
+                        <div style="background:#bfdbfe;border-radius:999px;height:10px;overflow:hidden;">
+                            <div id="zipProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px;transition:width 0.4s ease;"></div>
+                        </div>
+                        <div id="zipProgressFile" style="margin-top:5px;font-size:11px;color:#3b82f6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                        <div id="zipProgressCount" style="margin-top:2px;font-size:11px;color:#6b7280;"></div>
+                    </div>
                 </div>
 
                 <!-- 상태 및 토글 설정 -->
@@ -1167,9 +1180,121 @@
             }
         }
 
-        // ── 내 컴퓨터로 원클릭 백업 ZIP 다운로드 ──
-        function downloadBackupZip() {
-            window.location.href = '/api/admin/download_backup_zip';
+        // ── 내 컴퓨터로 원클릭 백업 ZIP 다운로드 (게이지바 방식) ──
+        function _zipSetProgress(pct, labelText, filename, done, total) {
+            const area   = document.getElementById('zipProgressArea');
+            const bar    = document.getElementById('zipProgressBar');
+            const pctEl  = document.getElementById('zipProgressPct');
+            const label  = document.getElementById('zipProgressLabel');
+            const fileEl = document.getElementById('zipProgressFile');
+            const cntEl  = document.getElementById('zipProgressCount');
+            if (!area) return;
+            area.style.display = 'block';
+            bar.style.width = pct + '%';
+            pctEl.textContent = pct + '%';
+            if (labelText) label.textContent = labelText;
+            if (filename)  fileEl.textContent = '📄 ' + filename;
+            if (total > 0) cntEl.textContent = done + ' / ' + total + ' 파일 처리 완료';
+        }
+
+        function _zipResetUI() {
+            const area = document.getElementById('zipProgressArea');
+            const bar  = document.getElementById('zipProgressBar');
+            const pct  = document.getElementById('zipProgressPct');
+            const file = document.getElementById('zipProgressFile');
+            const cnt  = document.getElementById('zipProgressCount');
+            if (area) area.style.display = 'none';
+            if (bar)  bar.style.width = '0%';
+            if (pct)  pct.textContent = '0%';
+            if (file) file.textContent = '';
+            if (cnt)  cnt.textContent = '';
+        }
+
+        async function downloadBackupZip() {
+            const btn  = document.getElementById('zipDownloadBtn');
+            const icon = document.getElementById('zipDownloadBtnIcon');
+            const text = document.getElementById('zipDownloadBtnText');
+
+            btn.disabled = true;
+            icon.textContent = '⏳';
+            text.textContent = 'ZIP 압축 준비 중...';
+            _zipResetUI();
+            _zipSetProgress(0, '⚙️ 파일 목록 수집 중...', '', 0, 0);
+
+            try {
+                // 1단계: 백그라운드 ZIP 생성 시작
+                const prepRes = await fetch('/api/admin/prepare_backup_zip', { method: 'POST' });
+                if (!prepRes.ok) {
+                    const err = await prepRes.json();
+                    throw new Error(err.error || '준비 요청 실패');
+                }
+
+                // 2단계: 게이지바 폴링 (최대 5분, 1초 간격)
+                const maxWait = 300000;
+                const interval = 1000;
+                let elapsed = 0;
+
+                await new Promise((resolve, reject) => {
+                    const timer = setInterval(async () => {
+                        elapsed += interval;
+                        try {
+                            const statusRes = await fetch('/api/admin/backup_zip_status');
+                            const s = await statusRes.json();
+
+                            if (s.error) {
+                                clearInterval(timer);
+                                reject(new Error(s.error));
+                                return;
+                            }
+
+                            const pct   = s.percent || 0;
+                            const done  = s.done_files || 0;
+                            const total = s.total_files || 0;
+                            const file  = s.current_file || '';
+
+                            if (s.ready) {
+                                _zipSetProgress(100, '✅ 압축 완료!', file, total, total);
+                                icon.textContent = '✅';
+                                text.textContent = '다운로드 시작 중...';
+                                clearInterval(timer);
+                                resolve();
+                            } else {
+                                const icons = ['⏳','🔄','📦','🗜️'];
+                                icon.textContent = icons[Math.floor(elapsed / 1000) % icons.length];
+                                const label = total > 0
+                                    ? `⚙️ 압축 중... (${pct}%)`
+                                    : '⚙️ 파일 목록 수집 중...';
+                                _zipSetProgress(pct, label, file, done, total);
+                                if (elapsed >= maxWait) {
+                                    clearInterval(timer);
+                                    reject(new Error('ZIP 생성 타임아웃 (5분 초과)'));
+                                }
+                            }
+                        } catch(e) {
+                            clearInterval(timer);
+                            reject(e);
+                        }
+                    }, interval);
+                });
+
+                // 3단계: 다운로드
+                window.location.href = '/api/admin/download_backup_zip';
+
+                // 버튼·게이지바 복구
+                setTimeout(() => {
+                    btn.disabled = false;
+                    icon.textContent = '📥';
+                    text.textContent = '백업 ZIP 파일 지금 다운로드';
+                    _zipResetUI();
+                }, 3500);
+
+            } catch (err) {
+                _zipSetProgress(0, '❌ 오류: ' + err.message, '', 0, 0);
+                document.getElementById('zipProgressBar').style.background = '#ef4444';
+                btn.disabled = false;
+                icon.textContent = '📥';
+                text.textContent = '백업 ZIP 파일 지금 다운로드';
+            }
         }
 
         async function githubBackup() {
