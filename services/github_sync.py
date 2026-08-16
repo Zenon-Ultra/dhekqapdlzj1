@@ -45,33 +45,34 @@ def auto_sync_loop():
                         f.write(str(time.time()))
                         
                     try:
+                        git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "echo"}
                         # git 저장소 초기화 및 origin 설정 (Render 환경 대비)
                         if not os.path.exists(os.path.join(cwd, ".git")):
                             print("[GitHub Sync] Git repository not found. Initializing...")
-                            subprocess.run(["git", "init"], cwd=cwd, check=True)
-                            subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=cwd, check=False)
-                            subprocess.run(["git", "fetch", "origin"], cwd=cwd, check=True)
-                            subprocess.run(["git", "reset", "--mixed", "origin/main"], cwd=cwd, check=True)
+                            subprocess.run(["git", "init"], cwd=cwd, check=True, env=git_env, timeout=10)
+                            subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
+                            subprocess.run(["git", "fetch", "origin"], cwd=cwd, check=True, env=git_env, timeout=15)
+                            subprocess.run(["git", "reset", "--mixed", "origin/main"], cwd=cwd, check=True, env=git_env, timeout=15)
                         else:
                             # origin 존재 여부 확인 후 set-url 또는 add
-                            remotes = subprocess.run(["git", "remote"], capture_output=True, text=True, cwd=cwd).stdout.splitlines()
+                            remotes = subprocess.run(["git", "remote"], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10).stdout.splitlines()
                             if "origin" in remotes:
-                                subprocess.run(["git", "remote", "set-url", "origin", repo_url], cwd=cwd, check=False)
+                                subprocess.run(["git", "remote", "set-url", "origin", repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
                             else:
-                                subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=cwd, check=False)
+                                subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
         
                         # 변경사항 확인
-                        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=cwd)
+                        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10)
                         if status.stdout.strip():
                             print("[GitHub Sync] Changes detected, syncing to GitHub...")
                             
-                            subprocess.run(["git", "config", "user.email", "bot@render.com"], cwd=cwd, check=False)
-                            subprocess.run(["git", "config", "user.name", "Render Auto Sync"], cwd=cwd, check=False)
-                            subprocess.run(["git", "add", "."], cwd=cwd, check=True)
-                            subprocess.run(["git", "commit", "-m", "Auto-sync data from Render"], cwd=cwd, check=True)
+                            subprocess.run(["git", "config", "user.email", "bot@render.com"], cwd=cwd, check=False, env=git_env, timeout=10)
+                            subprocess.run(["git", "config", "user.name", "Render Auto Sync"], cwd=cwd, check=False, env=git_env, timeout=10)
+                            subprocess.run(["git", "add", "."], cwd=cwd, check=True, env=git_env, timeout=15)
+                            subprocess.run(["git", "commit", "-m", "Auto-sync data from Render"], cwd=cwd, check=True, env=git_env, timeout=15)
                             
-                            subprocess.run(["git", "fetch", "origin"], cwd=cwd, check=False)
-                            subprocess.run(["git", "push", "--force-with-lease", "origin", "main"], cwd=cwd, check=True)
+                            subprocess.run(["git", "fetch", "origin"], cwd=cwd, check=False, env=git_env, timeout=15)
+                            subprocess.run(["git", "push", "--force-with-lease", "origin", "main"], cwd=cwd, check=True, env=git_env, timeout=20)
                             print("[GitHub Sync] Successfully synced to GitHub.")
                     finally:
                         if os.path.exists(lock_file):

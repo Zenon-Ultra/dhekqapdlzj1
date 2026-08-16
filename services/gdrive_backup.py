@@ -49,7 +49,7 @@ def get_seoul_now_str() -> str:
 def create_project_zip(root_dir: str) -> Tuple[str, str]:
     """
     현재 Render 프로젝트의 핵심 소스 및 데이터(admin.db 포함)를 ZIP으로 압축합니다.
-    (보안/임시 파일 제외 처리 및 동시성 대비 unique파일명 적용)
+    (이미지는 이미 압축 파일이므로 ZIP_STORED 모드를 적용하여 생성 시간을 1~2초대로 단축)
     
     Returns:
         (zip_filepath, zip_filename)
@@ -59,7 +59,7 @@ def create_project_zip(root_dir: str) -> Tuple[str, str]:
     zip_filename = f"HYPERX_Backup_{time_str}_{short_id}.zip"
     zip_filepath = os.path.join(root_dir, zip_filename)
 
-    with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_STORED) as zip_file:
         for dirpath, dirnames, filenames in os.walk(root_dir):
             # 1. 제외할 디렉터리 필터링
             dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS and not d.startswith('.')]

@@ -695,9 +695,14 @@ def admin_delete_book_request(req_id):
 @app.route('/api/admin/github_backup', methods=['POST'])
 @admin_required
 def github_backup():
-    """관리자가 수동으로 GitHub 커밋/푸시 및 Google Drive ZIP 업로드를 즉시 수행합니다."""
+    """선택된 대상(GitHub / Google Drive / 전체)으로 수동 백업을 수행합니다."""
     import subprocess, time, shutil
     from services.gdrive_backup import backup_to_google_drive
+
+    data = request.get_json(silent=True) or {}
+    target = data.get('target', request.args.get('target', 'all')).lower()
+    if target not in ['all', 'github', 'gdrive']:
+        target = 'all'
 
     cwd = os.path.dirname(os.path.abspath(__file__))
     lock_file = os.path.join(cwd, '.git_sync.lock')
@@ -712,14 +717,14 @@ def github_backup():
         else:
             return jsonify({'ok': False, 'error': '다른 백업/동기화 작업이 진행 중입니다. 10초 후 다시 시도해주세요.'}), 409
 
-    github_ok = False
-    github_msg = ""
+    github_ok = True if target == 'gdrive' else False
+    github_msg = "GitHub 백업 제외됨" if target == 'gdrive' else ""
     github_error = None
     commit_msg = None
     changed = False
 
-    gdrive_ok = False
-    gdrive_msg = ""
+    gdrive_ok = True if target == 'github' else False
+    gdrive_msg = "Google Drive 백업 제외됨" if target == 'github' else ""
     zip_name = None
 
     try:
@@ -727,69 +732,76 @@ def github_backup():
             f.write(str(time.time()))
 
         # ── 1. GitHub 백업 단계 ──
-        token = os.environ.get('GITHUB_TOKEN')
-        if not token:
-            github_ok = False
-            github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
-        else:
-            try:
-                repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
-                remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd).stdout.splitlines()
-                if 'origin' in remotes:
-                    subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False)
-                else:
-                    subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False)
-
-                subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False)
-                subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False)
-
-                has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
-                if has_rebase:
-                    subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False)
-                    for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
-                        reb_path = os.path.join(cwd, reb_dir)
-                        if os.path.exists(reb_path):
-                            shutil.rmtree(reb_path, ignore_errors=True)
-
-                status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd)
-                changed_files = status.stdout.strip()
-
-                if not changed_files:
-                    github_ok = True
-                    github_msg = "변경된 코드가 없습니다. GitHub는 이미 최신 상태입니다."
-                    changed = False
-                else:
-                    subprocess.run(['git', 'add', '.'], cwd=cwd, check=True)
-                    commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
-                    subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True)
-
-                    result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
-                    if result.returncode != 0:
-                        subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False)
-                        result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
-
-                    if result.returncode != 0:
-                        raise Exception(result.stderr or 'Push 실패')
-
-                    github_ok = True
-                    github_msg = f"GitHub 커밋/푸시 완료! ({commit_msg})"
-                    changed = True
-
-            except Exception as gh_e:
+        if target in ['all', 'github']:
+            token = os.environ.get('GITHUB_TOKEN')
+            if not token:
                 github_ok = False
-                github_error = str(gh_e)
+                github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
+            else:
+                try:
+                    repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
+                    git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "echo"}
+
+                    remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10).stdout.splitlines()
+                    if 'origin' in remotes:
+                        subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
+                    else:
+                        subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
+
+                    subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False, env=git_env, timeout=10)
+                    subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False, env=git_env, timeout=10)
+
+                    has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
+                    if has_rebase:
+                        subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False, env=git_env, timeout=10)
+                        for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
+                            reb_path = os.path.join(cwd, reb_dir)
+                            if os.path.exists(reb_path):
+                                shutil.rmtree(reb_path, ignore_errors=True)
+
+                    status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10)
+                    changed_files = status.stdout.strip()
+
+                    if not changed_files:
+                        github_ok = True
+                        github_msg = "변경된 코드가 없습니다. GitHub는 이미 최신 상태입니다."
+                        changed = False
+                    else:
+                        subprocess.run(['git', 'add', '.'], cwd=cwd, check=True, env=git_env, timeout=15)
+                        commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")}'
+                        subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=15)
+
+                        result = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=20)
+                        if result.returncode != 0:
+                            subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=15)
+                            result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=20)
+
+                        if result.returncode != 0:
+                            raise Exception((result.stderr or result.stdout or 'Git push 실패').strip())
+
+                        github_ok = True
+                        github_msg = f"GitHub 커밋/푸시 완료! ({commit_msg})"
+                        changed = True
+
+                except Exception as gh_e:
+                    github_ok = False
+                    github_error = str(gh_e)
 
         # ── 2. Google Drive ZIP 백업 단계 ──
-        try:
-            gdrive_ok, gdrive_msg, zip_name = backup_to_google_drive(cwd)
-        except Exception as gd_e:
-            gdrive_ok = False
-            gdrive_msg = f"Google Drive 백업 예외: {gd_e}"
+        if target in ['all', 'gdrive']:
+            try:
+                gdrive_ok, gdrive_msg, zip_name = backup_to_google_drive(cwd)
+            except Exception as gd_e:
+                gdrive_ok = False
+                gdrive_msg = f"Google Drive 백업 예외: {gd_e}"
 
-        overall_ok = github_ok and gdrive_ok
+        overall_ok = (github_ok if target != 'gdrive' else True) and (gdrive_ok if target != 'github' else True)
+        if target == 'all':
+            overall_ok = github_ok and gdrive_ok
 
         return jsonify({
             'ok': overall_ok,
+            'target': target,
             'github_ok': github_ok,
             'github_msg': github_msg or github_error or 'GitHub 백업 대기',
             'github_error': github_error,
