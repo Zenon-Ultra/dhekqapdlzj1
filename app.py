@@ -813,6 +813,16 @@ def execute_backup_background(cwd):
             BACKUP_TASK_STATUS['progress_msg'] = '변경된 모든 에셋 및 데이터 파일 감지 중 (git add .)...'
             BACKUP_TASK_STATUS['percent'] = 50
             print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
+
+            # 이전 git 프로세스 크래시/타임아웃으로 남은 lock 파일 제거
+            index_lock = os.path.join(cwd, '.git', 'index.lock')
+            if os.path.exists(index_lock):
+                try:
+                    os.remove(index_lock)
+                    print("[Backup Task] Removed stale .git/index.lock", flush=True)
+                except Exception as lock_err:
+                    print(f"[Backup Task] Warning: could not remove index.lock: {lock_err}", flush=True)
+
             subprocess.run(['git', 'add', '.'], cwd=cwd, check=False, env=git_env, timeout=120)
 
             status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=30)
