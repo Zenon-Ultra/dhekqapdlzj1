@@ -21,3 +21,7 @@ __pycache__/
 
 .venv/
 .pytest_cache/
+.test-tmp/
+.browser-smoke/
+
+.env.cloud

@@ -7,9 +7,15 @@ import mimetypes
 import os
 from pathlib import Path
 from urllib.parse import quote
+from services.config import load_settings
+load_settings()
 from filelock import FileLock
 
 ROOT = Path(__file__).resolve().parents[1]
+IMAGE_MIME = {'.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.bmp':'image/bmp'}
+def content_type(filename):
+    return IMAGE_MIME.get(Path(filename).suffix.lower()) or mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+
 
 def safe_component(value):
     if not value or value in ('.', '..') or any(c in value for c in '/\\\x00:'):
@@ -29,11 +35,13 @@ class Store:
     def s3(self):
         if self.client is None:
             import boto3
+            from botocore.config import Config
             endpoint = os.environ['B2_ENDPOINT_URL']
             if not endpoint.startswith('https://') or not endpoint.endswith('.backblazeb2.com'):
                 raise ValueError('Expected HTTPS Backblaze S3 endpoint')
             self.client = boto3.client('s3', endpoint_url=endpoint,
                 region_name=os.environ['B2_REGION'],
+                config=Config(connect_timeout=5, read_timeout=15, retries={'max_attempts': 1}),
                 aws_access_key_id=os.environ['B2_KEY_ID'],
                 aws_secret_access_key=os.environ['B2_APPLICATION_KEY'])
         return self.client
@@ -43,7 +51,7 @@ class Store:
     def read(self, key):
         return self.s3().get_object(Bucket=self.bucket, Key=key)['Body'].read()
 
-    def restore(self):
+    def restore(self, materialize=True):
         if not self.enabled: return
         try:
             data = json.loads(self.read(self.key('catalog.json')))
@@ -52,7 +60,20 @@ class Store:
             if getattr(exc, 'response', {}).get('Error', {}).get('Code') not in ('NoSuchKey', '404'):
                 raise
             return
-        self.entries = data['files']
+        if data.get('version') != 1 or not isinstance(data.get('files'), dict):
+            raise ValueError('Invalid catalog')
+        for rel, entry in data['files'].items():
+            self.path(rel)
+            digest = entry.get('sha256', '')
+            if len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+                raise ValueError('Invalid object checksum')
+            if entry.get('key') != self.key('objects/' + digest):
+                raise ValueError('Object outside configured prefix')
+        self.entries = {k:v for k,v in data['files'].items() if k != 'templates/main.html'}
+        if not materialize: return
+        for path in (self.root/'img').rglob('*'):
+            if path.is_file() and path.stat().st_size == 0 and path.relative_to(self.root).as_posix() not in self.entries:
+                path.unlink()
         for rel, entry in self.entries.items():
             path = self.path(rel)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,8 +95,14 @@ class Store:
             raise ValueError('Object checksum mismatch')
         return data
 
-    def snapshot_url(self, key):
-        return self.s3().generate_presigned_url('get_object', Params={'Bucket':self.bucket,'Key':key}, ExpiresIn=3600) if self.enabled else None
+    def serve_entry(self, entry, filename):
+        from flask import Response
+        data = self.verified(entry)
+        response = Response(data, mimetype=content_type(filename))
+        response.headers['Cache-Control'] = 'private, max-age=300'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.set_etag(entry['sha256'])
+        return response
 
     def freeze_scraps(self, folder):
         from services.database import connect
@@ -91,6 +118,18 @@ class Store:
 
     def hydrate(self, folder):
         safe_component(folder)
+        # Preserve failed-edit remnants before rebuilding the local working copy.
+        directory = self.root/'img'/folder
+        if not any(k.startswith('img/'+folder+'/') for k in self.entries):
+            return
+        extras = [p for p in directory.glob('*') if p.is_file() and p.relative_to(self.root).as_posix() not in self.entries]
+        if extras:
+            import shutil, uuid
+            recovery = self.root/'.storage-recovery'/uuid.uuid4().hex/folder
+            recovery.mkdir(parents=True)
+            for path in extras:
+                shutil.copy2(path, recovery/path.name)
+                path.unlink()
         for rel, entry in self.entries.items():
             if rel.startswith('img/' + folder + '/'):
                 self.path(rel).write_bytes(self.verified(entry))
@@ -103,7 +142,7 @@ class Store:
             entries = {k:v for k,v in entries.items() if not k.startswith('img/' + folder + '/')}
         paths = [p for folder in folders for p in (self.root/'img'/folder).glob('*') if p.is_file()]
         paths += list((self.root/'textbooks').glob('*'))
-        paths += [self.root/'templates'/'main.html']
+        # Application templates are code; restore only generated textbooks and image data.
         total = sum(p.stat().st_size for p in paths if p.is_file())
         if total > int(os.environ.get('B2_MAX_BATCH_BYTES', '500000000')):
             raise ValueError('Batch exceeds upload budget; publish fewer books')
@@ -118,7 +157,7 @@ class Store:
                 continue
             key = self.key('objects/' + digest)
             self.s3().put_object(Bucket=self.bucket, Key=key, Body=data,
-                ContentType=mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
+                ContentType=content_type(path.name))
             entry = {'key':key, 'sha256':digest, 'size':len(data)}
             if self.verified(entry) != data: raise ValueError('Upload verification failed')
             entries[rel] = entry
@@ -135,14 +174,11 @@ class Store:
                     self.path(rel).write_bytes(b'')
 
     def serve(self, filename):
-        from flask import redirect, send_from_directory, abort
+        from flask import send_from_directory
         rel = 'img/' + filename
         self.path(rel)
         if self.enabled and rel in self.entries:
-            url = self.s3().generate_presigned_url('get_object', Params={'Bucket':self.bucket,'Key':self.entries[rel]['key']}, ExpiresIn=3600)
-            response = redirect(url)
-            response.headers['Cache-Control'] = 'private, max-age=300'
-            return response
+            return self.serve_entry(self.entries[rel], filename)
         return send_from_directory(self.root/'img', filename)
 
 store = Store()
@@ -154,7 +190,10 @@ def durable_task(func, plural=False):
         folders = first if plural else [first]
         for folder in folders: safe_component(folder)
         if not store.enabled:
-            yield from func(first, *args, **kwargs)
+            for message in func(first, *args, **kwargs):
+                if json.loads(message.removeprefix('data: ').strip()).get('error'):
+                    raise ValueError('Editing failed: '+message)
+                yield message
             return
         with store.lock:
             for folder in folders:
@@ -163,6 +202,11 @@ def durable_task(func, plural=False):
             messages = list(func(first, *args, **kwargs))
             if any('🚨' in message or '⚠️' in message for message in messages):
                 raise RuntimeError('Editing failed; remote catalog unchanged, local files retained')
+            if func.__name__ in ('split_image_task', 'merge_images_task', 'delete_image_task'):
+                from book_assets import generate_book_assets
+                for folder in folders:
+                    generate_book_assets(folder, image_dir=store.root/'img'/folder,
+                        output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html', allow_empty=True)
             store.publish(folders)
             store.evict(folders)
             yield from messages

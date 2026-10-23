@@ -10,10 +10,10 @@ from PIL import Image, ImageChops
 from book_assets import generate_book_assets
 
 def yield_msg(msg, percent=-1):
-    data = {"msg": msg}
+    data = {"msg": msg, "error": msg.startswith(("🚨", "⚠️"))}
     if percent >= 0:
         data["percent"] = percent
-    return f"data: {json.dumps(data)}\n\n"
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 # ==========================================
 # 여백 자르기 유틸리티
@@ -218,11 +218,12 @@ def generate_assets_task(selected_folders, cover_url=None):
         try:
             html_path, json_path = generate_book_assets(
                 folder_name=folder,
-                image_dir=image_dir,
-                output_dir=os.path.join("textbooks"),
+                image_dir=os.path.abspath(image_dir),
+                output_dir=os.path.abspath("textbooks"),
                 title=folder,
                 subtitle="자동 생성",
-                index_path=os.path.join("templates", "main.html"),
+                index_path=os.path.abspath(os.path.join("templates", "main.html")),
+                allow_empty=True,
                 custom_cover_url=cover_url
             )
             json_str = f"{os.path.basename(json_path)} / " if json_path else ""

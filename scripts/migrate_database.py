@@ -6,6 +6,8 @@ import sqlite3
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from services.config import load_settings
+load_settings()
 import psycopg
 TABLES = ('users', 'book_requests', 'scraps', 'system_config')
 def main():
@@ -15,6 +17,11 @@ def main():
     p.add_argument('--apply', action='store_true')
     a=p.parse_args()
     source=sqlite3.connect('file:'+str(Path(a.source).resolve())+'?mode=ro',uri=True)
+    if not a.apply:
+        for table in TABLES:
+            print(table, source.execute('SELECT count(*) FROM '+table).fetchone()[0])
+        source.close()
+        return
     with psycopg.connect(os.environ['DATABASE_URL']) as target:
         for table in TABLES:
             columns=[r[1] for r in source.execute('PRAGMA table_info('+table+')')]

@@ -3,6 +3,9 @@ import os
 import sqlite3
 from functools import wraps
 
+from services.config import load_settings
+load_settings()
+
 from services.tasks import (
     extract_pdf_task, cleanup_images_task, generate_assets_task,
     split_image_task, merge_images_task, delete_image_task
@@ -13,8 +16,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from services.github_sync import start_auto_sync, is_auto_sync_enabled, set_auto_sync_enabled
 
-from dotenv import load_dotenv
-load_dotenv()
+from services.config import load_settings
+load_settings()
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY') or (__import__('secrets').token_hex(32) if not os.environ.get('RENDER') else None)
 if not app.secret_key or (os.environ.get('RENDER') and len(app.secret_key) < 32):
@@ -22,7 +25,12 @@ if not app.secret_key or (os.environ.get('RENDER') and len(app.secret_key) < 32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=bool(os.environ.get('RENDER')), MAX_CONTENT_LENGTH=100 * 1024 * 1024)
 from services.database import connect
 from services.storage import store
+if os.environ.get('RENDER') and not store.enabled:
+    raise RuntimeError('STORAGE_BACKEND=b2 is required on Render')
 store.restore()
+
+from services.security import install_csrf
+install_csrf(app)
 
 DB_PATH = os.environ.get('DB_PATH', os.path.join(os.path.dirname(__file__), 'admin.db'))
 
@@ -106,6 +114,10 @@ def set_maintenance_mode(enabled: bool):
         c.execute("INSERT INTO system_config (key, value) VALUES ('maintenance_mode', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (val,))
         conn.commit()
 
+@app.errorhandler(ValueError)
+def invalid_input(exc):
+    return jsonify({'error': str(exc)}), 400
+
 @app.before_request
 def check_maintenance_mode():
     # 관리자 로그인 사용자는 제한 없음
@@ -167,7 +179,7 @@ def admin_required(f):
         from services.storage import safe_component
         data = request.get_json(silent=True) or {}
         for key in ('folder', 'name', 'filename', 'target'):
-            value = request.args.get(key) or data.get(key)
+            value = request.args.get(key) or data.get(key) or request.form.get(key)
             if value:
                 safe_component(str(value))
         for value in (request.args.get('files', '').split(',') if request.args.get('files') else []):
@@ -244,11 +256,12 @@ def login():
             c.execute("SELECT password, role FROM users WHERE username=?", (username,))
             user = c.fetchone()
             if user and check_password_hash(user[0], password):
+                session.clear()
                 session['logged_in'] = True
                 session['username'] = username
                 session['role'] = user[1] or 'user'
                 next_url = request.args.get('next')
-                if next_url:
+                if next_url and next_url.startswith('/') and not next_url.startswith('//') and '\\' not in next_url:
                     return redirect(next_url)
                 return redirect(url_for('main_page'))
             else:
@@ -294,7 +307,7 @@ def serve_img(filename):
 @app.route('/textbooks/<path:filename>')
 @login_required
 def serve_textbooks(filename):
-    return send_from_directory('textbooks', filename)
+    return send_from_directory(store.root/'textbooks', filename)
 
 # ==========================================
 # APIs
@@ -330,7 +343,7 @@ def list_books():
     books = []
     if os.path.exists(textbooks_dir):
         for fname in sorted(os.listdir(textbooks_dir)):
-            if not fname.endswith('.html'):
+            if not fname.endswith('.html') or fname == 'viewer.html':
                 continue
             book_name = fname[:-5]  # .html 제거
             meta = {}
@@ -431,7 +444,7 @@ def upload_cover():
 
     # 교재 에셋 갱신
     try:
-        generate_book_assets(target_folder_name, custom_cover_url=cover_url)
+        generate_book_assets(target_folder_name, image_dir=store.root/'img'/target_folder_name, output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html', custom_cover_url=cover_url)
     except Exception:
         pass
 
@@ -452,7 +465,7 @@ def sync_books():
         if not os.path.isdir(folder_path):
             continue
         try:
-            generate_book_assets(folder)
+            list(generate_assets_task([folder]))
             synced.append(folder)
         except Exception as e:
             errors.append({'folder': folder, 'error': str(e)})
@@ -469,6 +482,8 @@ def sync_books():
 @login_required
 def list_folder_images():
     folder = request.args.get('folder', '')
+    from services.storage import safe_component
+    safe_component(folder)
     base_dir = os.path.join("img", folder)
     if not folder or not os.path.exists(base_dir):
         return jsonify({"images": []})
@@ -495,7 +510,7 @@ def manage_scraps():
                 "book_folder": r[1],
                 "book_title": r[2],
                 "image_file": r[3],
-                "image_url": store.snapshot_url(r[6]) if r[6] else None,
+                "image_url": url_for('scrap_image', scrap_id=r[0]) if r[6] else None,
                 "question_num": r[4],
                 "created_at": r[5]
             } for r in rows]
@@ -516,8 +531,8 @@ def manage_scraps():
                 if img_file:
                     try:
                         c.execute(
-                            "INSERT INTO scraps (username, book_folder, book_title, image_file, question_num) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-                            (username, book_folder, book_title, img_file, q_num)
+                            "INSERT INTO scraps (username, book_folder, book_title, image_file, question_num, snapshot_key) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                            (username, book_folder, book_title, img_file, q_num, store.entries.get('img/'+book_folder+'/'+img_file.split('/')[-1], {}).get('key') if store.enabled else None)
                         )
                         if c.rowcount > 0:
                             added_count += 1
@@ -541,6 +556,20 @@ def manage_scraps():
             conn.commit()
             return jsonify({"ok": True})
 
+@app.route('/api/scraps/<int:scrap_id>/image')
+@login_required
+def scrap_image(scrap_id):
+    with connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT snapshot_key, image_file FROM scraps WHERE id=? AND username=?', (scrap_id, session['username']))
+        row = c.fetchone()
+    if not row or not row[0] or not store.enabled:
+        return jsonify({'error': 'Image not found'}), 404
+    digest = row[0].rsplit('/', 1)[-1]
+    if row[0] != store.key('objects/'+digest):
+        return jsonify({'error': 'Invalid snapshot'}), 400
+    return store.serve_entry({'key':row[0], 'sha256':digest}, row[1])
+
 # ── Admin Only APIs ──
 @app.route('/api/upload_pdf', methods=['POST'])
 @admin_required
@@ -554,6 +583,8 @@ def upload_pdf():
     if not file.filename.lower().endswith('.pdf'):
         return jsonify({"error": "PDF 파일만 업로드할 수 있습니다."}), 400
     save_path = os.path.join(UPLOAD_FOLDER, f"{name}.pdf")
+    if os.path.exists(save_path):
+        return jsonify({'error': 'An upload already exists; choose a new name'}), 409
     file.save(save_path)
     return jsonify({"ok": True, "path": save_path})
 
@@ -567,6 +598,9 @@ def run_extract():
         path = os.path.join(UPLOAD_FOLDER, f"{name}.pdf")
     else:
         path = request.args.get('path', '')
+    from pathlib import Path
+    if not Path(path).resolve().is_relative_to(Path(UPLOAD_FOLDER).resolve()):
+        return jsonify({'error': 'PDF must be uploaded first'}), 400
     return Response(extract_pdf_task(path, name, col), mimetype='text/event-stream')
 
 @app.route('/api/run/trim', methods=['GET'])
@@ -617,9 +651,9 @@ def run_crop_single():
     
     from book_assets import generate_book_assets
     try:
-        generate_book_assets(folder)
+        generate_book_assets(folder, image_dir=store.root/'img'/folder, output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html', allow_empty=True)
     except Exception:
-        pass
+        raise
 
     return jsonify({'ok': True, 'changed': changed, 'message': f'{filename} 여백 자르기 완료!'})
 
@@ -838,27 +872,6 @@ ZIP_TASK_STATUS = {
 def github_backup():
     return jsonify({'ok': False, 'error': 'GitHub data backup is disabled. Use ZIP export or B2 snapshots.'}), 409
 
-    import threading
-    global BACKUP_TASK_STATUS
-
-    if BACKUP_TASK_STATUS['running']:
-        return jsonify({
-            'ok': False,
-            'error': '이미 백업 작업이 진행 중입니다.',
-            'running': True,
-            'progress_msg': BACKUP_TASK_STATUS['progress_msg']
-        }), 409
-
-    cwd = os.path.dirname(os.path.abspath(__file__))
-
-    t = threading.Thread(target=execute_backup_background, args=(cwd,), daemon=True)
-    t.start()
-
-    return jsonify({
-        'ok': True,
-        'status': 'started',
-        'message': 'GitHub 백업이 시작되었습니다.'
-    })
 
 def _run_zip_background(cwd):
     """백그라운드 스레드에서 ZIP 파일을 생성하고 진행 상태를 파일에 기록합니다."""
@@ -935,7 +948,8 @@ def prepare_backup_zip():
         except Exception:
             pass
 
-    cwd = os.path.dirname(os.path.abspath(__file__))
+    cwd = str(store.root)
+    ZIP_TASK_STATUS.update({'running': True, 'ready': False, 'error': None})
     t = threading.Thread(target=_run_zip_background, args=(cwd,), daemon=True)
     t.start()
     return jsonify({'ok': True, 'message': 'ZIP 생성이 시작되었습니다. 상태를 폴링하세요.'})
@@ -1013,7 +1027,9 @@ def github_auto_sync_toggle():
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         enabled = bool(data.get('enabled', False))
-        set_auto_sync_enabled(enabled)
+        if enabled:
+            return jsonify({'ok': False, 'error': 'GitHub auto-sync is disabled; use cloud backup.'}), 409
+        set_auto_sync_enabled(False)
         return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
     return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
 

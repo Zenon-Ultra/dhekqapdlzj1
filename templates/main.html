@@ -668,7 +668,7 @@
           style="border-color: #93c5fd; color: #1d4ed8;">
           ⚙️ 템플릿
         </button>
-        <button class="btn btn-outline" onclick="location.href='/logout'"
+        <button class="btn btn-outline" onclick="location.href='/logout?_csrf='+document.querySelector('meta[name=csrf-token]').content"
           style="border-color: #fca5a5; color: #dc2626;">
           🚪 로그아웃
         </button>
@@ -697,7 +697,7 @@
         style="border-color:#93c5fd; color:#1d4ed8;">
         ⚙️ 템플릿 수정하기
       </button>
-      <button class="btn btn-outline" onclick="location.href='/logout'" style="border-color:#fca5a5; color:#dc2626;">
+      <button class="btn btn-outline" onclick="location.href='/logout?_csrf='+document.querySelector('meta[name=csrf-token]').content" style="border-color:#fca5a5; color:#dc2626;">
         🚪 로그아웃
       </button>
     </div>
@@ -1380,107 +1380,9 @@
         }
 
         const win = window.open('', '_blank');
-        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오답 문제집 PDF</title><style>${css}</style></head><body>${body}<div class="card-grid" id="cardGrid">
-    <a class="card" href="textbooks/RPM_확률과통계.html" data-title="RPM 확률과통계" data-id="RPM_확률과통계">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRSu2cUi1BUD2xHbkb1ZquvUp7Ku1L8R_EzLSoIoy0qRwK6oj2lqHfLB2ti&s=10" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">RPM 확률과통계</div>
-        <div class="card-sub">자동 생성</div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID RPM_확률과통계</div>
-      </div>
-    </a>
-    
-    <a class="card" href="textbooks/통통이.html" data-title="통통이" data-id="통통이">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9788928349043.jpg?t=2977558" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">통통이</div>
-        <div class="card-sub">자동 생성</div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 통통이</div>
-      </div>
-    </a>
-    
-    <a class="card" href="textbooks/완자_물리학.html" data-title="완자 물리학" data-id="완자_물리학">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9791173165436.jpg?t=2977619" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">완자 물리학</div>
-        <div class="card-sub">자동 생성</div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 완자_물리학</div>
-      </div>
-    </a>
-    
-    <a class="card" href="textbooks/234.html" data-title="234" data-id="234">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="../img/234/001.png" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">234</div>
-        <div class="card-sub"></div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 234</div>
-      </div>
-    </a>
-    
-    
-    <a class="card" href="textbooks/자이스토리물리학.html" data-title="자이스토리물리학" data-id="자이스토리물리학">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9791162409381.jpg?t=2974940" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">자이스토리물리학</div>
-        <div class="card-sub"></div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 자이스토리물리학</div>
-      </div>
-    </a>
-    
-    <a class="card" href="textbooks/엔픽물리학.html" data-title="엔픽물리학" data-id="엔픽물리학">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://image.yes24.com/goods/147983370/XL" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">엔픽물리학</div>
-        <div class="card-sub"></div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 엔픽물리학</div>
-      </div>
-    </a>
-    
-    <a class="card" href="textbooks/미적쎈.html" data-title="미적쎈" data-id="미적쎈">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://contents.kyobobook.co.kr/sih/fit-in/400x0/pdt/9788928349029.jpg?t=2974549" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">미적쎈</div>
-        <div class="card-sub"></div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 미적쎈</div>
-      </div>
-    </a>
-    
-    <a class="card" href="textbooks/물리학.html" data-title="물리학" data-id="물리학">
-      <button class="pin-btn" onclick="event.preventDefault(); togglePin(this)" title="고정">📌</button>
-      <img class="card-thumb" src="https://file.megastudy.net/ebook/27623/27623/page/go1.jpg" alt="표지" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="card-thumb-placeholder" style="display:none;">📖</div>
-      <div class="card-body">
-        <div class="card-title">물리학</div>
-        <div class="card-sub"></div>
-        <div class="card-badge">빠른정답</div>
-        <div class="card-id">ID 물리학</div>
-      </div>
-    </a>
-    
-</body></html>`);
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>오답 문제집 PDF</title><style>${css}</style></head><body>${body}</body></html>`);
         win.document.close();
-        setTimeout(() => win.print(), 1200);
+        Promise.all(Array.from(win.document.images).map(img => img.decode().catch(() => {}))).then(() => win.print());
       }
 
       window.onload = function () {
