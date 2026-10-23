@@ -6,12 +6,31 @@ import pytest
 from services.storage import Store, safe_component
 
 class MemoryS3:
-    def __init__(self): self.objects = {}; self.fail = False
+    def __init__(self): self.objects = {}; self.fail = False; self.versions = []; self.fail_delete = False
     def put_object(self, Bucket, Key, Body, **kw):
         if self.fail and Key.endswith('catalog.json'): raise OSError('network failure')
         self.objects[Key]=Body
+        self.versions.append({'Key':Key,'VersionId':str(len(self.versions)+1),'Body':Body})
+        return {'ETag': chr(34)+hashlib.md5(Body).hexdigest()+chr(34)}
     def get_object(self, Bucket, Key): return {'Body':io.BytesIO(self.objects[Key])}
     def generate_presigned_url(self,*a,**kw): return 'https://example.test/object'
+    def get_paginator(self, operation):
+        remote = self
+        class Pages:
+            def paginate(self, Bucket, Prefix):
+                if operation == 'list_object_versions':
+                    yield {'Versions':[dict(Key=v['Key'],VersionId=v['VersionId']) for v in remote.versions if v['Key'].startswith(Prefix)]}
+                else:
+                    yield {'Contents':[{'Key':k,'Size':len(v),'ETag':hashlib.md5(v).hexdigest()} for k,v in remote.objects.items() if k.startswith(Prefix)]}
+        return Pages()
+    def delete_objects(self, Bucket, Delete):
+        if self.fail_delete: return {'Errors':[{'Code':'AccessDenied'}]}
+        for target in Delete['Objects']:
+            self.versions = [v for v in self.versions if (v['Key'],v['VersionId']) != (target['Key'],target['VersionId'])]
+            remaining = [v for v in self.versions if v['Key'] == target['Key']]
+            if remaining: self.objects[target['Key']] = remaining[-1]['Body']
+            else: self.objects.pop(target['Key'],None)
+        return {}
 
 def test_roundtrip_and_failed_publish_keeps_catalog(tmp_path, monkeypatch):
     monkeypatch.setenv('STORAGE_BACKEND','b2')
@@ -59,3 +78,20 @@ def test_webp_pdf_extraction_and_editing(tmp_path, monkeypatch):
     assert not any('🚨' in m for m in split_image_task('sample',1))
     assert not any('🚨' in m for m in merge_images_task('sample',1,2))
     assert not any('🚨' in m for m in cleanup_images_task(['sample']))
+
+def test_etag_upload_rejects_corrupt_server_checksum(tmp_path,monkeypatch):
+    monkeypatch.setenv('STORAGE_BACKEND','b2')
+    monkeypatch.setenv('B2_UPLOAD_VERIFICATION','etag')
+    remote=MemoryS3();s=Store(tmp_path,remote)
+    p=tmp_path/'img'/'book'/'001.webp';p.parent.mkdir(parents=True);p.write_bytes(b'original')
+    s.publish(['book'])
+    catalog=remote.objects[s.key('catalog.json')]
+    original_put=remote.put_object
+    def corrupt(**kwargs):
+        result=original_put(**kwargs)
+        if '/objects/' in kwargs['Key']:result['ETag']='wrong'
+        return result
+    remote.put_object=corrupt
+    p.write_bytes(b'changed')
+    with pytest.raises(ValueError):s.publish(['book'])
+    assert remote.objects[s.key('catalog.json')]==catalog

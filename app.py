@@ -307,6 +307,8 @@ def serve_img(filename):
 @app.route('/textbooks/<path:filename>')
 @login_required
 def serve_textbooks(filename):
+    if store.is_deleted_asset(filename):
+        return jsonify({'error': 'Book deleted'}), 404
     return send_from_directory(store.root/'textbooks', filename)
 
 # ==========================================
@@ -326,8 +328,8 @@ def user_info():
 def list_folders():
     base_dir = "img"
     if not os.path.exists(base_dir):
-        return jsonify({"folders": []})
-    folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+        return jsonify({"folders": sorted(store.pending_deletions)})
+    folders = sorted(set(f for f in os.listdir(base_dir) if f not in store.deleted_books and os.path.isdir(os.path.join(base_dir, f))) | set(store.pending_deletions))
     return jsonify({"folders": folders})
 
 @app.route('/api/books', methods=['GET'])
@@ -343,6 +345,7 @@ def list_books():
     books = []
     if os.path.exists(textbooks_dir):
         for fname in sorted(os.listdir(textbooks_dir)):
+            if store.is_deleted_asset(fname): continue
             if not fname.endswith('.html') or fname == 'viewer.html':
                 continue
             book_name = fname[:-5]  # .html 제거
@@ -524,21 +527,24 @@ def manage_scraps():
             if not book_folder or not items:
                 return jsonify({"error": "book_folder 및 items 데이터가 필요합니다."}), 400
             
-            added_count = 0
-            for item in items:
-                img_file = item.get('file', '')
-                q_num = item.get('num', 0)
-                if img_file:
-                    try:
-                        c.execute(
-                            "INSERT INTO scraps (username, book_folder, book_title, image_file, question_num, snapshot_key) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-                            (username, book_folder, book_title, img_file, q_num, store.entries.get('img/'+book_folder+'/'+img_file.split('/')[-1], {}).get('key') if store.enabled else None)
-                        )
-                        if c.rowcount > 0:
-                            added_count += 1
-                    except sqlite3.Error:
-                        pass
-            conn.commit()
+            with store.lock:
+                if book_folder in store.deleted_books:
+                    return jsonify({'error': '삭제된 교재에는 스크랩을 추가할 수 없습니다.'}), 410
+                added_count = 0
+                for item in items:
+                    img_file = item.get('file', '')
+                    q_num = item.get('num', 0)
+                    if img_file:
+                        try:
+                            c.execute(
+                                "INSERT INTO scraps (username, book_folder, book_title, image_file, question_num, snapshot_key) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                                (username, book_folder, book_title, img_file, q_num, store.entries.get('img/'+book_folder+'/'+img_file.split('/')[-1], {}).get('key') if store.enabled else None)
+                            )
+                            if c.rowcount > 0:
+                                added_count += 1
+                        except sqlite3.Error:
+                            pass
+                conn.commit()
             return jsonify({"ok": True, "added": added_count})
 
         elif request.method == 'DELETE':
@@ -563,12 +569,44 @@ def scrap_image(scrap_id):
         c = conn.cursor()
         c.execute('SELECT snapshot_key, image_file FROM scraps WHERE id=? AND username=?', (scrap_id, session['username']))
         row = c.fetchone()
-    if not row or not row[0] or not store.enabled:
+    if not row or not row[0]:
         return jsonify({'error': 'Image not found'}), 404
     digest = row[0].rsplit('/', 1)[-1]
     if row[0] != store.key('objects/'+digest):
         return jsonify({'error': 'Invalid snapshot'}), 400
+    if len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+        return jsonify({'error': 'Invalid snapshot'}), 400
+    if not store.enabled:
+        return send_from_directory(store.root/'cloud-objects', digest)
     return store.serve_entry({'key':row[0], 'sha256':digest}, row[1])
+
+@app.route('/api/admin/books/delete', methods=['POST'])
+@admin_required
+def delete_whole_book():
+    data = request.get_json(silent=True) or {}
+    folder = data.get('folder', '')
+    if not isinstance(folder, str) or not folder or data.get('confirm_name') != folder:
+        return jsonify({'error': '삭제할 교재 이름을 정확히 입력해 주세요.'}), 400
+    try:
+        result = store.delete_book(folder)
+    except FileNotFoundError:
+        return jsonify({'error': '교재를 찾을 수 없습니다.'}), 404
+    except Exception as exc:
+        if isinstance(exc, ValueError): raise
+        return jsonify({'error': '삭제를 완료하지 못했습니다. B2 삭제 권한·연결을 확인한 뒤 같은 교재를 다시 삭제해 주세요.', 'pending': folder in store.pending_deletions}), 503
+    return jsonify({'ok': True, **result, 'message': '교재·문제사진·에셋과 연결된 스크랩을 삭제했습니다. B2 전용 파일은 과거 버전까지 제거했고, 다른 교재와 공유하는 파일은 유지했습니다.'})
+
+@app.route('/api/admin/storage_usage')
+@admin_required
+def admin_storage_usage():
+    from services.usage import storage_usage
+    try:
+        response = jsonify(storage_usage(store, DB_PATH))
+    except Exception:
+        app.logger.warning('Usage measurement unavailable')
+        return jsonify({'error': '용량을 조회하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.'}), 503
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 # ── Admin Only APIs ──
 @app.route('/api/upload_pdf', methods=['POST'])

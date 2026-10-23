@@ -25,3 +25,4 @@ __pycache__/
 .browser-smoke/
 
 .env.cloud
+cloud-objects/

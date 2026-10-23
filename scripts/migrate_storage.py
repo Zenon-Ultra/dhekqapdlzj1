@@ -22,9 +22,35 @@ def migrate(storage, apply=False, resume=False, verify=False):
             if rel.startswith('img/') and (rel not in inventory or inventory[rel]['sha256']!=entry['sha256']):
                 raise RuntimeError('Existing remote data differs: '+rel)
         for folder in folders:
-            with storage.lock: storage.publish([folder])
+            print('Migrating book: '+folder, flush=True)
+            def progress(current,total,rel):
+                if current % 50 == 0 or current == total:
+                    print(f'  uploaded/verified {current}/{total}', flush=True)
+            with storage.lock: storage.publish([folder], progress=progress)
+            print('Book catalog committed: '+folder, flush=True)
     if verify:
-        for rel,entry in storage.entries.items(): storage.verified(entry)
+        if __import__('os').environ.get('B2_UPLOAD_VERIFICATION','readback') == 'etag':
+            # ListObjects returns the server ETag and size without one GET per image.
+            objects={}
+            pages=storage.s3().get_paginator('list_objects_v2').paginate(Bucket=storage.bucket,Prefix=storage.key('objects/'))
+            for page in pages:
+                for item in page.get('Contents',[]): objects[item['Key']]=item
+            for rel,entry in storage.entries.items():
+                path=storage.path(rel)
+                data=path.read_bytes()
+                item=objects.get(entry['key'])
+                if not item or item['Size']!=len(data) or item['ETag'].strip(chr(34))!=hashlib.md5(data).hexdigest():
+                    raise ValueError('Remote ETag/size mismatch: '+rel)
+                if hashlib.sha256(data).hexdigest()!=entry['sha256']:
+                    raise ValueError('Source SHA-256 mismatch: '+rel)
+            print(f'Server ETag/size and source SHA-256 verified: {len(storage.entries)} files',flush=True)
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+            workers=max(1,min(8,int(__import__('os').environ.get('B2_UPLOAD_WORKERS','2'))))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                for index,_ in enumerate(executor.map(storage.verified, storage.entries.values()),1):
+                    if index % 100 == 0 or index == len(storage.entries):
+                        print(f'Remote verification {index}/{len(storage.entries)}',flush=True)
         for rel,expected in inventory.items():
             actual=storage.entries.get(rel)
             if not actual or actual['sha256']!=expected['sha256'] or actual['size']!=expected['size']:
