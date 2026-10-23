@@ -1167,7 +1167,7 @@
           const card = document.createElement('div');
           card.className = `scrap-card ${isChecked ? 'selected' : ''}`;
 
-          let imgUrl = s.image_file;
+          let imgUrl = s.image_url || s.image_file;
           if (!imgUrl.startsWith('http') && !imgUrl.startsWith('/')) {
             imgUrl = `/img/${s.book_folder}/${s.image_file.split('/').pop()}`;
           }
@@ -1257,7 +1257,7 @@
         }
 
         const items = targetScraps.map((s, n) => {
-          let imgUrl = s.image_file;
+          let imgUrl = s.image_url || s.image_file;
           if (!imgUrl.startsWith('http') && !imgUrl.startsWith('/')) {
             imgUrl = `/img/${s.book_folder}/${s.image_file.split('/').pop()}`;
           }

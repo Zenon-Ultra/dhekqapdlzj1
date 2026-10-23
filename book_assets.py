@@ -278,9 +278,12 @@ def generate_book_assets(
 </html>
 """
     html_path.write_text(viewer_html, encoding="utf-8")
+    json_path = output_dir / f"{book_name}.json"
+    json_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    _write_shared_viewer(output_dir, book_name, title, subtitle)
 
 
     if index_path.exists() or index_path.parent.exists():
         _append_index_card(index_path, book_name, title, subtitle, html_path.name, preview_image)
 
-    return html_path, None
+    return html_path, json_path

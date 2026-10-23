@@ -160,9 +160,9 @@ def extract_pdf_task(file_path, workbook_name, is_two_column):
                             
                             if final_img.shape[0] > 100:
                                 save_img = cv2.cvtColor(final_img, cv2.COLOR_RGB2BGR)
-                                out_path = os.path.join(output_dir, f"{q_num:03d}.png")
+                                out_path = os.path.join(output_dir, f"{q_num:03d}.webp")
                                 extension = os.path.splitext(out_path)[1]
-                                result, encoded_img = cv2.imencode(extension, save_img)
+                                result, encoded_img = cv2.imencode(extension, save_img, [cv2.IMWRITE_WEBP_QUALITY, 85])
                                 if result:
                                     with open(out_path, mode='w+b') as f:
                                         encoded_img.tofile(f)
@@ -189,7 +189,7 @@ def cleanup_images_task(selected_folders):
 
     for i, folder in enumerate(selected_folders):
         folder_path = os.path.join(base_dir, folder)
-        img_files = [f for f in os.listdir(folder_path) if f.endswith('.png')]
+        img_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
         yield yield_msg(f"📁 {folder} 폴더 처리 중... (총 {len(img_files)}개 이미지)", int(100 * i / folder_count))
         
         for j, img_file in enumerate(img_files):
@@ -367,6 +367,8 @@ def merge_images_task(selected_folder, start_num_or_files, end_num=None):
         nums = [p[0] for p in sorted_pairs]
         filenames = [p[1] for p in sorted_pairs]
 
+        if len(nums) < 2 or nums != list(range(nums[0], nums[-1]+1)):
+            raise ValueError('Select at least two consecutive questions to merge')
         start_num = nums[0]
         end_num = nums[-1]
 
@@ -535,10 +537,33 @@ def delete_image_task(selected_folder, target_num_or_file):
                 os.rename(old_path, new_path)
 
         yield yield_msg("⏳ 교재 에셋 자동 갱신 중...", 80)
-        list(generate_assets_task([selected_folder]))
+        list(_generate_assets_local([selected_folder]))
 
         yield yield_msg(f"🎉 성공적으로 삭제되었습니다! ({target_num:03d}번 삭제, 이후 번호 -1 당겨짐 & 교재 에셋 갱신 완료)", 100)
     except Exception as e:
         yield yield_msg(f"🚨 오류 발생: {e}", 100)
 
 
+
+# Existing editing algorithms operate on a temporary local copy of one book.
+from services.storage import durable_task, store, safe_component
+cleanup_images_task = durable_task(cleanup_images_task, plural=True)
+_generate_assets_local = generate_assets_task
+generate_assets_task = durable_task(generate_assets_task, plural=True)
+split_image_task = durable_task(split_image_task)
+merge_images_task = durable_task(merge_images_task)
+delete_image_task = durable_task(delete_image_task)
+_original_extract = extract_pdf_task
+def extract_pdf_task(file_path, workbook_name, is_two_column):
+    safe_component(workbook_name)
+    # Never overwrite a previously extracted book.
+    folder = os.path.join('img', workbook_name)
+    if os.path.isdir(folder) and os.listdir(folder):
+        raise ValueError('Book already exists; choose a new book name')
+    with store.lock:
+        messages = list(_original_extract(file_path, workbook_name, is_two_column))
+        if any('🚨' in m for m in messages):
+            raise RuntimeError('PDF extraction failed; partial files retained locally')
+        store.publish([workbook_name])
+        if store.enabled: store.evict([workbook_name])
+        yield from messages

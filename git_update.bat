@@ -1,18 +1,3 @@
 @echo off
-cd /d C:\dhekqapdlzj
-
-echo ========================================
-echo       GitHub 업데이트 시작
-echo ========================================
-
-git add -A
-
-git commit -m "Auto update"
-
-git push origin main
-
-echo.
-echo ========================================
-echo       GitHub 업데이트 완료
-echo ========================================
-pause
+echo Runtime data auto-commit disabled. Review code on a feature branch and open a PR.
+exit /b 1

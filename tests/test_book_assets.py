@@ -19,6 +19,7 @@ class GenerateBookAssetsTests(unittest.TestCase):
                 folder_name="테스트 교재",
                 image_dir=image_dir,
                 output_dir=output_dir,
+                index_path=tmp_path / "unused-index.html",
             )
 
             self.assertTrue(html_path.exists())

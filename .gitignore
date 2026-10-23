@@ -8,3 +8,16 @@ __pycache__/
 # 깃허브 토큰 관련 (필요시)
 # img/
 # textbooks/
+
+.env
+*.db
+*.db-*
+img/
+uploads/
+__pycache__/
+*.pyc
+.storage*
+.migration*
+
+.venv/
+.pytest_cache/

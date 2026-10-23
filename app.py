@@ -13,12 +13,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from services.github_sync import start_auto_sync, is_auto_sync_enabled, set_auto_sync_enabled
 
+from dotenv import load_dotenv
+load_dotenv()
 app = Flask(__name__)
-app.secret_key = 'super_secret_admin_key_hyperx_2026'
-DB_PATH = os.path.join(os.path.dirname(__file__), 'admin.db')
+app.secret_key = os.environ.get('SECRET_KEY') or (__import__('secrets').token_hex(32) if not os.environ.get('RENDER') else None)
+if not app.secret_key or (os.environ.get('RENDER') and len(app.secret_key) < 32):
+    raise RuntimeError('SECRET_KEY is required on Render')
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=bool(os.environ.get('RENDER')), MAX_CONTENT_LENGTH=100 * 1024 * 1024)
+from services.database import connect
+from services.storage import store
+store.restore()
+
+DB_PATH = os.environ.get('DB_PATH', os.path.join(os.path.dirname(__file__), 'admin.db'))
 
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         # users 테이블 생성 (role 컬럼 포함)
         c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT DEFAULT 'user')''')
@@ -54,22 +63,31 @@ def init_db():
             )
         ''')
 
+        try:
+            c.execute('ALTER TABLE scraps ADD COLUMN snapshot_key TEXT')
+        except sqlite3.OperationalError:
+            pass
+
         # system_config 테이블 생성 (점검 모드 등 시스템 설정 저장)
         c.execute('''CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)''')
 
-        # admin123 계정 생성 또는 역할 업데이트
-        c.execute("SELECT role FROM users WHERE username='admin123'")
-        row = c.fetchone()
-        hashed = generate_password_hash('admin123')
-        if not row:
-            c.execute("INSERT INTO users (username, password, role) VALUES ('admin123', ?, 'admin')", (hashed,))
-        else:
-            c.execute("UPDATE users SET role='admin' WHERE username='admin123'")
+        username = os.environ.get('ADMIN_USERNAME')
+        password = os.environ.get('ADMIN_PASSWORD')
+        c.execute("SELECT password FROM users WHERE username='admin123'")
+        legacy = c.fetchone()
+        if legacy and check_password_hash(legacy[0], 'admin123'):
+            c.execute("UPDATE users SET password=?, role='user' WHERE username='admin123'", (generate_password_hash(__import__('secrets').token_urlsafe(48)),))
+        if username and password:
+            if len(password) < 12:
+                raise RuntimeError('ADMIN_PASSWORD must contain at least 12 characters')
+            c.execute('SELECT username FROM users WHERE username=?', (username,))
+            if not c.fetchone():
+                c.execute("INSERT INTO users (username,password,role) VALUES (?,?,'admin')", (username, generate_password_hash(password)))
         conn.commit()
 
 def get_maintenance_mode():
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
             c.execute("SELECT value FROM system_config WHERE key='maintenance_mode'")
@@ -81,17 +99,17 @@ def get_maintenance_mode():
     return False
 
 def set_maintenance_mode(enabled: bool):
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
         val = '1' if enabled else '0'
-        c.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('maintenance_mode', ?)", (val,))
+        c.execute("INSERT INTO system_config (key, value) VALUES ('maintenance_mode', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (val,))
         conn.commit()
 
 @app.before_request
 def check_maintenance_mode():
     # 관리자 로그인 사용자는 제한 없음
-    if session.get('admin_logged_in'):
+    if session.get('role') == 'admin':
         return None
     
     # 점검 모드가 OFF면 통과
@@ -100,7 +118,7 @@ def check_maintenance_mode():
 
     # 허용되는 관리자/로그인/정적 자원 라우트
     path = request.path
-    allowed_prefixes = ['/admin', '/api/admin', '/static', '/favicon.ico']
+    allowed_prefixes = ['/admin', '/api/admin', '/login', '/logout', '/static', '/favicon.ico']
     if any(path.startswith(prefix) for prefix in allowed_prefixes):
         return None
 
@@ -146,6 +164,27 @@ def admin_required(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Forbidden: 관리자 권한이 필요합니다."}), 403
             return redirect(url_for('main_page'))
+        from services.storage import safe_component
+        data = request.get_json(silent=True) or {}
+        for key in ('folder', 'name', 'filename', 'target'):
+            value = request.args.get(key) or data.get(key)
+            if value:
+                safe_component(str(value))
+        for value in (request.args.get('files', '').split(',') if request.args.get('files') else []):
+            safe_component(value.strip())
+        for value in data.get('filenames', []):
+            safe_component(value)
+        if store.enabled and f.__name__ in ('run_crop_single', 'upload_cover'):
+            folder = request.args.get('folder') or data.get('folder') or request.form.get('folder')
+            safe_component(folder)
+            with store.lock:
+                store.freeze_scraps(folder)
+                store.hydrate(folder)
+                result = app.make_response(f(*args, **kwargs))
+                if result.status_code < 400:
+                    store.publish([folder])
+                    store.evict([folder])
+                return result
         return f(*args, **kwargs)
     return decorated_function
 
@@ -183,7 +222,7 @@ def signup():
         if len(username) < 3:
             return render_template('signup.html', error="아이디는 3자 이상이어야 합니다.")
 
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT username FROM users WHERE username=?", (username,))
             if c.fetchone():
@@ -200,7 +239,7 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT password, role FROM users WHERE username=?", (username,))
             user = c.fetchone()
@@ -250,7 +289,7 @@ def ebsi_sc():
 # ==========================================
 @app.route('/img/<path:filename>')
 def serve_img(filename):
-    return send_from_directory('img', filename)
+    return store.serve(filename)
 
 @app.route('/textbooks/<path:filename>')
 @login_required
@@ -442,20 +481,21 @@ def list_folder_images():
 @login_required
 def manage_scraps():
     username = session['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         if request.method == 'GET':
             book_folder = request.args.get('book_folder')
             if book_folder:
-                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at FROM scraps WHERE username=? AND book_folder=? ORDER BY question_num ASC, id ASC", (username, book_folder))
+                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at, snapshot_key FROM scraps WHERE username=? AND book_folder=? ORDER BY question_num ASC, id ASC", (username, book_folder))
             else:
-                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at FROM scraps WHERE username=? ORDER BY created_at DESC", (username,))
+                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at, snapshot_key FROM scraps WHERE username=? ORDER BY created_at DESC", (username,))
             rows = c.fetchall()
             scraps = [{
                 "id": r[0],
                 "book_folder": r[1],
                 "book_title": r[2],
                 "image_file": r[3],
+                "image_url": store.snapshot_url(r[6]) if r[6] else None,
                 "question_num": r[4],
                 "created_at": r[5]
             } for r in rows]
@@ -476,7 +516,7 @@ def manage_scraps():
                 if img_file:
                     try:
                         c.execute(
-                            "INSERT OR IGNORE INTO scraps (username, book_folder, book_title, image_file, question_num) VALUES (?, ?, ?, ?, ?)",
+                            "INSERT INTO scraps (username, book_folder, book_title, image_file, question_num) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                             (username, book_folder, book_title, img_file, q_num)
                         )
                         if c.rowcount > 0:
@@ -509,6 +549,8 @@ def upload_pdf():
         return jsonify({"error": "파일이 없습니다."}), 400
     file = request.files['file']
     name = request.form.get('name', 'upload').strip()
+    from services.storage import safe_component
+    safe_component(name)
     if not file.filename.lower().endswith('.pdf'):
         return jsonify({"error": "PDF 파일만 업로드할 수 있습니다."}), 400
     save_path = os.path.join(UPLOAD_FOLDER, f"{name}.pdf")
@@ -611,6 +653,8 @@ def run_bulk_split():
         return jsonify({'ok': False, 'error': '분할할 파일이 선택되지 않았습니다.'}), 400
 
     results = []
+    import re
+    filenames = sorted(filenames, key=lambda f: int(re.search(r'\d+', f).group()), reverse=True)
     for filename in filenames:
         try:
             list(split_image_task(folder, str(filename)))
@@ -695,7 +739,7 @@ def run_delete_sync():
 @login_required
 def get_my_book_request():
     username = session['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT id, book_name, status, created_at FROM book_requests WHERE username=? AND status='pending' ORDER BY created_at DESC LIMIT 1", (username,))
         row = c.fetchone()
@@ -712,7 +756,7 @@ def create_book_request():
     if not book_name:
         return jsonify({"error": "교재 이름이 필요합니다."}), 400
     
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         # 이미 대기중인 요청이 있는지 확인
         c.execute("SELECT id FROM book_requests WHERE username=? AND status='pending'", (username,))
@@ -727,7 +771,7 @@ def create_book_request():
 @login_required
 def delete_book_request(req_id):
     username = session['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("DELETE FROM book_requests WHERE id=? AND username=?", (req_id, username))
         conn.commit()
@@ -736,7 +780,7 @@ def delete_book_request(req_id):
 @app.route('/api/admin/book_requests', methods=['GET'])
 @admin_required
 def admin_get_book_requests():
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT id, username, book_name, status, created_at FROM book_requests ORDER BY created_at DESC")
         rows = c.fetchall()
@@ -752,7 +796,7 @@ def admin_get_book_requests():
 @app.route('/api/admin/book_requests/<int:req_id>/complete', methods=['POST'])
 @admin_required
 def admin_complete_book_request(req_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("UPDATE book_requests SET status='completed' WHERE id=?", (req_id,))
         conn.commit()
@@ -761,7 +805,7 @@ def admin_complete_book_request(req_id):
 @app.route('/api/admin/book_requests/<int:req_id>', methods=['DELETE'])
 @admin_required
 def admin_delete_book_request(req_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("DELETE FROM book_requests WHERE id=?", (req_id,))
         conn.commit()
@@ -789,149 +833,11 @@ ZIP_TASK_STATUS = {
     'done_files': 0,
 }
 
-def execute_backup_background(cwd):
-    global BACKUP_TASK_STATUS
-    import subprocess, time, shutil
-
-    BACKUP_TASK_STATUS['running'] = True
-    BACKUP_TASK_STATUS['target'] = 'github'
-    BACKUP_TASK_STATUS['progress_msg'] = 'GitHub 백업 준비 중...'
-    BACKUP_TASK_STATUS['percent'] = 10
-    BACKUP_TASK_STATUS['result'] = None
-    BACKUP_TASK_STATUS['start_time'] = time.time()
-
-    print("[Backup Task] Started GitHub backup", flush=True)
-
-    lock_file = os.path.join(cwd, '.git_sync.lock')
-    github_ok = False
-    github_msg = ""
-    github_error = None
-    commit_msg = None
-    changed = False
-
-    try:
-        with open(lock_file, 'w') as f:
-            f.write(str(time.time()))
-
-        BACKUP_TASK_STATUS['progress_msg'] = 'GitHub 저장소 연결 및 인증 확인 중...'
-        BACKUP_TASK_STATUS['percent'] = 25
-        print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-
-        token = os.environ.get('GITHUB_TOKEN')
-        if not token:
-            github_ok = False
-            github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
-        else:
-            repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
-            git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "echo"}
-
-            remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10).stdout.splitlines()
-            if 'origin' in remotes:
-                subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
-            else:
-                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
-
-            subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False, env=git_env, timeout=10)
-            subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False, env=git_env, timeout=10)
-
-            has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
-            if has_rebase:
-                subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False, env=git_env, timeout=10)
-                for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
-                    reb_path = os.path.join(cwd, reb_dir)
-                    if os.path.exists(reb_path):
-                        shutil.rmtree(reb_path, ignore_errors=True)
-
-            BACKUP_TASK_STATUS['progress_msg'] = '변경된 모든 에셋 및 데이터 파일 감지 중 (git add .)...'
-            BACKUP_TASK_STATUS['percent'] = 50
-            print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-
-            # 이전 git 프로세스 크래시/타임아웃으로 남은 lock 파일 제거
-            index_lock = os.path.join(cwd, '.git', 'index.lock')
-            if os.path.exists(index_lock):
-                try:
-                    os.remove(index_lock)
-                    print("[Backup Task] Removed stale .git/index.lock", flush=True)
-                except Exception as lock_err:
-                    print(f"[Backup Task] Warning: could not remove index.lock: {lock_err}", flush=True)
-
-            subprocess.run(['git', 'add', '-u'], cwd=cwd, check=False, env=git_env, timeout=120)
-
-            # 새 파일(untracked)은 목록을 먼저 가져와 100개씩 나눠 add → 메모리 급증 방지
-            ls_new = subprocess.run(
-                ['git', 'ls-files', '--others', '--exclude-standard'],
-                capture_output=True, text=True, cwd=cwd, env=git_env, timeout=60
-            )
-            new_files = [f for f in ls_new.stdout.splitlines() if f.strip()]
-            if new_files:
-                batch_size = 100
-                for batch_start in range(0, len(new_files), batch_size):
-                    batch = new_files[batch_start:batch_start + batch_size]
-                    subprocess.run(
-                        ['git', 'add', '--'] + batch,
-                        cwd=cwd, check=False, env=git_env, timeout=60
-                    )
-                    print(f"[Backup Task] git add batch {batch_start // batch_size + 1}: {len(batch)} files", flush=True)
-
-            status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=30)
-            changed_files = status.stdout.strip()
-
-            if not changed_files:
-                github_ok = True
-                github_msg = "변경된 파일이 없습니다. GitHub 저장소가 이미 최신 상태입니다."
-                changed = False
-                BACKUP_TASK_STATUS['percent'] = 100
-            else:
-                file_count = len(changed_files.splitlines())
-                commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")} ({file_count} files changed)'
-                BACKUP_TASK_STATUS['progress_msg'] = f'GitHub 커밋 및 원격 푸시 중 ({file_count}개 파일)...'
-                BACKUP_TASK_STATUS['percent'] = 80
-                print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-
-                subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=60)
-
-                result = subprocess.run(['git', 'push', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=120)
-                if result.returncode != 0:
-                    subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=30)
-                    result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=120)
-
-                if result.returncode != 0:
-                    err_detail = (result.stderr or result.stdout or 'Git push 실패').strip()
-                    raise Exception(f"Git push 실패: {err_detail}")
-
-                github_ok = True
-                github_msg = f"GitHub 전체 백업 완료! ({file_count}개 변경 파일 커밋/푸시됨)"
-                changed = True
-                BACKUP_TASK_STATUS['percent'] = 100
-
-        BACKUP_TASK_STATUS['progress_msg'] = '백업 완료!'
-        BACKUP_TASK_STATUS['result'] = {
-            'ok': github_ok,
-            'github_ok': github_ok,
-            'github_msg': github_msg or github_error or 'GitHub 백업 완료',
-            'github_error': github_error,
-            'changed': changed,
-            'commit': commit_msg
-        }
-
-    except Exception as e:
-        BACKUP_TASK_STATUS['percent'] = 100
-        BACKUP_TASK_STATUS['result'] = {
-            'ok': False,
-            'error': f'GitHub 백업 중 예외 발생: {e}'
-        }
-        print(f"[Backup Task] Severe error: {e}", flush=True)
-    finally:
-        BACKUP_TASK_STATUS['running'] = False
-        if os.path.exists(lock_file):
-            try:
-                os.remove(lock_file)
-            except Exception:
-                pass
-
 @app.route('/api/admin/github_backup', methods=['POST'])
 @admin_required
 def github_backup():
+    return jsonify({'ok': False, 'error': 'GitHub data backup is disabled. Use ZIP export or B2 snapshots.'}), 409
+
     import threading
     global BACKUP_TASK_STATUS
 
@@ -1124,4 +1030,4 @@ def maintenance_mode_toggle():
 
 if __name__ == '__main__':
     print("Server has started! Open browser and go to http://127.0.0.1:5000")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=False)
