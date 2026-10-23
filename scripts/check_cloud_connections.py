@@ -37,7 +37,8 @@ def check(write_probe=False):
     else:
         try:
             import psycopg
-            with psycopg.connect(os.environ['DATABASE_URL'],connect_timeout=10,sslmode='require',options='-c statement_timeout=5000') as conn:
+            with psycopg.connect(os.environ['DATABASE_URL'],connect_timeout=10,sslmode='require') as conn:
+                conn.execute("SET LOCAL statement_timeout = '5s'")
                 if conn.execute('SELECT 1').fetchone()!=(1,):raise ValueError('Unexpected database result')
             print('PostgreSQL: authenticated TLS connection successful; no schema/data changes')
         except Exception as exc:

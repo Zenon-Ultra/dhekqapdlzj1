@@ -2,7 +2,7 @@
 
 변경은 codex/b2-persistent-storage 브랜치와 PR #1에만 반영합니다.
 main, 기존 img 파일, 기존 admin.db와 Git 기록은 삭제하지 않습니다.
-실제 B2·Neon 계정이 없다는 사용자 답변에 따라 외부 서비스 생성·이전·배포는 실행하지 않았습니다.
+Neon 가입 후 사용자의 설정 요청에 따라 hyperx 무료 프로젝트를 생성하고 실제 PostgreSQL 접속을 검증했습니다. 기존 데이터 이전과 배포는 아직 실행하지 않았습니다.
 
 ## 구현 내용
 
@@ -120,14 +120,14 @@ Neon Free: 프로젝트당 1GB, 월 100 CU-hours, 카드 없이 이용 가능. �
 CSRF/다른 사용자 접근 차단, 업로드 실패 시 기존 목록 보존 등을 검증했습니다.
 브라우저에서 로그인·WebP 이미지 실제 로딩·스크랩 저장/조회·관리자 화면 및 ZIP 생성·다운로드 HTTP 200 완료를 확인했습니다.
 인쇄 미리보기 호출은 확인했지만 실제 종이 인쇄나 PDF 저장은 하지 않았습니다.
-B2·Neon 계정이 없어 실제 API·PostgreSQL 이전·운영 교재 이전은 실행하지 않았습니다.
+Neon 실제 TLS 접속과 별도 임시 스키마의 테이블/사용자/스크랩/요청/upsert 호환 검증을 통과했고 모두 롤백했습니다. PostgreSQL 운영 DB는 비어 있습니다. B2 API 키 미설정으로 실제 B2 API·운영 교재 이전은 실행하지 않았습니다.
 Docker가 설치되어 있지 않아 컨테이너 빌드도 미실행입니다. PR은 이 검증 전까지 Draft입니다.
 단일 교재 편집과 ZIP에는 임시 디스크 공간이 필요하며, 너무 큰 작업은 제한으로 중단됩니다.
 
 
 ## 실제 계정 연결 준비
 
-사용자 확인: B2와 Neon 모두 아직 계정/설정이 필요합니다.
+최신 상태: B2 hyperx 비공개 버킷은 생성되었으며 API 키 설정이 남았습니다. Neon Free 프로젝트와 연결은 완료했습니다.
 가입·본인 인증·약관 동의는 사용자가 직접 진행합니다. 카드 등록/유료 전환은 하지 않습니다.
 
 1. Backblaze B2 계정을 만들고, 비공개 버킷 하나를 생성합니다.
@@ -149,3 +149,14 @@ Docker가 설치되어 있지 않아 컨테이너 빌드도 미실행입니다. 
 scripts/migrate_storage.py·migrate_database.py·restore_backup.py·check_cloud_connections.py,
 templates/main.html·admin.html, static/security.js, Dockerfile, .dockerignore,
 .env.example, .gitignore, git_update.bat, pytest.ini 및 tests/.
+
+
+## Neon 실제 설정 완료 (2026-10-23)
+
+- 프로젝트/데이터베이스: hyperx / hyperx, production 브랜치
+- PostgreSQL 18, AWS US East 2 (Ohio), Free plan 유지
+- 컴퓨트 최소/최대 0.25 CU, 5분 유휴 후 scale-to-zero 유지
+- 풀링·TLS 연결 문자열을 Git 제외 .env.cloud에 저장. 비밀값은 보고서/커밋에 포함하지 않음
+- 실제 SELECT 1 및 임시 스키마의 앱 SQL 호환 검증 통과. 임시 스키마/검증 데이터는 트랜잭션 롤백
+- 풀링 연결에서는 시작 options의 statement_timeout이 지원되지 않아 연결 후 SET LOCAL로 적용하도록 검사 도구 수정
+- 최신 운영 원본 DB를 확인한 후 별도 이전이 필요. Git에 있는 admin.db를 무조건 최신 운영 DB로 간주하지 않음
