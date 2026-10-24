@@ -35,6 +35,7 @@ class Store:
         self.entries = {}
         self.deleted_books = set()
         self.pending_deletions = {}
+        self.fresh_asset_folders = set()
         self._read_cache = OrderedDict()
         self._read_cache_size = 0
         self._read_cache_lock = RLock()
@@ -223,6 +224,7 @@ class Store:
         if self.pending_deletions:
             raise ValueError('Finish pending book deletion before publishing more files')
         entries = dict(self.entries)
+        self.fresh_asset_folders.difference_update(folders)
         for folder in folders:
             safe_component(folder)
             entries = {k:v for k,v in entries.items() if not k.startswith('img/' + folder + '/')}
@@ -233,7 +235,7 @@ class Store:
         if total > int(os.environ.get('B2_MAX_BATCH_BYTES', '500000000')):
             raise ValueError('Batch exceeds upload budget; publish fewer books')
         paths = [path for path in paths if path.is_file()]
-        client = self.s3()
+        self.s3()  # Initialize the shared client before starting upload threads.
         mode = os.environ.get('B2_UPLOAD_VERIFICATION', 'etag')
         if mode not in ('readback', 'etag'):
             raise ValueError('Unknown upload verification mode')
@@ -244,21 +246,7 @@ class Store:
             old = self.entries.get(rel)
             if old and old['sha256'] == digest:
                 return rel, old
-            key = self.key('objects/' + digest)
-            import base64
-            md5 = hashlib.md5(data).digest()
-            response = client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type(path.name), ContentMD5=base64.b64encode(md5).decode('ascii')) or {}
-            entry = {'key':key, 'sha256':digest, 'size':len(data)}
-            if mode == 'etag':
-                if response.get('ETag', '').strip(chr(34)) != md5.hex():
-                    raise ValueError('Server object MD5 mismatch; catalog unchanged')
-                entry['verification'] = 'content-md5-and-etag'
-                self._cache_read(digest, data)
-            elif self.verified(entry) != data:
-                raise ValueError('Upload verification failed')
-            else:
-                entry['verification'] = 'sha256-readback'
-            return rel, entry
+            return rel, self.put_verified(data, path.name)
         from concurrent.futures import ThreadPoolExecutor
         workers = max(1, min(8, int(os.environ.get('B2_UPLOAD_WORKERS', '2'))))
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -267,6 +255,27 @@ class Store:
                 if progress: progress(index, len(paths), rel)
         deleted = self.deleted_books.difference(folders)
         self._commit_catalog(entries, deleted)
+
+    def put_verified(self, data, filename):
+        """Write one immutable object without enumerating or hydrating a book."""
+        import base64
+        digest = hashlib.sha256(data).hexdigest()
+        md5 = hashlib.md5(data).digest()
+        key = self.key('objects/'+digest)
+        mode = os.environ.get('B2_UPLOAD_VERIFICATION', 'etag')
+        if mode not in ('etag', 'readback'): raise ValueError('Unknown verification mode')
+        response = self.s3().put_object(Bucket=self.bucket, Key=key, Body=data,
+            ContentType=content_type(filename), ContentMD5=base64.b64encode(md5).decode('ascii')) or {}
+        entry = {'key':key, 'sha256':digest, 'size':len(data)}
+        if mode == 'etag':
+            if response.get('ETag','').strip(chr(34)) != md5.hex():
+                raise ValueError('Server object MD5 mismatch; catalog unchanged')
+            entry['verification'] = 'content-md5-and-etag'
+            self._cache_read(digest, data)
+        else:
+            if self.verified(entry) != data: raise ValueError('Upload verification failed')
+            entry['verification'] = 'sha256-readback'
+        return entry
 
     def _commit_catalog(self, entries, deleted, pending=None):
         pending = self.pending_deletions if pending is None else pending
@@ -331,6 +340,16 @@ def durable_task(func, plural=False):
                 if json.loads(message.removeprefix('data: ').strip()).get('error'):
                     raise ValueError('Editing failed: '+message)
                 yield message
+            return
+        if func.__name__ == 'split_image_task':
+            from services.book_editing import edit_selected
+            from services.tasks import yield_msg
+            target = args[0]
+            filename = str(target) if '.' in str(target) else next((Path(p).name for p in store.entries
+                if p.startswith('img/'+first+'/') and Path(p).stem == f'{int(target):03d}'), '')
+            yield yield_msg('✂️ 선택한 이미지만 불러와 분할합니다.', 5)
+            edit_selected(store, first, [filename])
+            yield yield_msg('🎉 이미지 분할 및 교재 에셋 저장 완료!', 100)
             return
         with store.lock:
             for folder in folders:

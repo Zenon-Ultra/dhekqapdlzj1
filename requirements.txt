@@ -10,3 +10,4 @@ python-dotenv>=1.0.0
 boto3>=1.35,<2
 psycopg[binary]>=3.2,<4
 filelock>=3.16,<4
+pypdfium2>=4.30,<6

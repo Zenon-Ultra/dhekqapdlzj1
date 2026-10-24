@@ -35,75 +35,40 @@ def trim_bottom_whitespace(image_path):
 
 def trim_all_whitespace(image_path):
     try:
-        img = Image.open(image_path).convert("RGB")
-        pixels = img.load()
-        width, height = img.size
-        whitespace_threshold = 230
-        
-        def is_white_row(y):
-            for x in range(width):
-                r, g, b = pixels[x, y]
-                if max(r, g, b) < whitespace_threshold:
-                    return False
-            return True
-        
-        def is_white_col(x):
-            for y in range(height):
-                r, g, b = pixels[x, y]
-                if max(r, g, b) < whitespace_threshold:
-                    return False
-            return True
-        
-        top = 0
-        for y in range(height):
-            if not is_white_row(y):
-                top = max(0, y - 10)
-                break
-        bottom = height
-        for y in range(height - 1, -1, -1):
-            if not is_white_row(y):
-                bottom = min(height, y + 15)
-                break
-        left = 0
-        for x in range(width):
-            if not is_white_col(x):
-                left = max(0, x - 10)
-                break
-        right = width
-        for x in range(width - 1, -1, -1):
-            if not is_white_col(x):
-                right = min(width, x + 15)
-                break
-                
-        if left < right and top < bottom:
-            cropped_img = img.crop((left, top, right, bottom))
-            cropped_img.save(image_path)
-            return True
-        return False
-    except Exception as e:
+        with Image.open(image_path) as source:
+            img = source.convert('RGB')
+        pixels = np.asarray(img)
+        # Vectorized bounds avoid Python loops through millions of white pixels.
+        ink = np.any(pixels < 230, axis=2)
+        rows = np.flatnonzero(np.any(ink, axis=1))
+        cols = np.flatnonzero(np.any(ink, axis=0))
+        if not rows.size or not cols.size: return False
+        box = (max(0,int(cols[0])-10), max(0,int(rows[0])-10),
+               min(img.width,int(cols[-1])+15), min(img.height,int(rows[-1])+15))
+        if box == (0,0,img.width,img.height): return False
+        img.crop(box).save(image_path)
+        return True
+    except Exception:
         return False
 
 # ==========================================
 # 1. 문제 추출 (PDF -> 이미지)
 # ==========================================
-def extract_pdf_task(file_path, workbook_name, is_two_column):
+def extract_pdf_task(file_path, workbook_name, is_two_column, renderer='pdfium', annotations=True):
     yield yield_msg(f"📁 저장 폴더: img/{workbook_name}", 5)
     output_dir = os.path.join("img", workbook_name)
     os.makedirs(output_dir, exist_ok=True)
     yield yield_msg("⚙️ 스캔본 여백 분석 및 정밀 크롭 진행 중...", 10)
 
     try:
-        pdf_doc = fitz.open(file_path)
+        from services.pdf_rendering import open_document, render_page
+        context = open_document(file_path, renderer)
+        pdf_doc = context.__enter__()
         total_pages = len(pdf_doc)
         q_num = 1
         
         for page_num in range(total_pages):
-            page = pdf_doc[page_num]
-            pix = page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5))
-            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-            
-            if pix.n == 4: img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
-            elif pix.n == 1: img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            img = render_page(pdf_doc, page_num, renderer, annotations)
                 
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             _, thresh = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY_INV)
@@ -173,11 +138,12 @@ def extract_pdf_task(file_path, workbook_name, is_two_column):
             pct = 10 + int(80 * (page_num + 1) / total_pages)
             yield yield_msg(f"⏳ 페이지 {page_num+1}/{total_pages} 분석 완료...", pct)
             
-        pdf_doc.close()
         yield yield_msg("🎉 모든 문항 추출 완료!", 100)
     except Exception as e:
         yield yield_msg(f"🚨 오류 발생: {e}", 100)
         traceback.print_exc()
+    finally:
+        if 'context' in locals() and 'pdf_doc' in locals(): context.__exit__(None,None,None)
 
 # ==========================================
 # 2. 여백 정리
@@ -555,7 +521,7 @@ split_image_task = durable_task(split_image_task)
 merge_images_task = durable_task(merge_images_task)
 delete_image_task = durable_task(delete_image_task)
 _original_extract = extract_pdf_task
-def extract_pdf_task(file_path, workbook_name, is_two_column):
+def extract_pdf_task(file_path, workbook_name, is_two_column, renderer='pdfium', annotations=True):
     from pathlib import Path
     from concurrent.futures import ThreadPoolExecutor
     from queue import Queue, Empty
@@ -574,7 +540,7 @@ def extract_pdf_task(file_path, workbook_name, is_two_column):
                 recovery = store.root/'.storage-recovery'/uuid.uuid4().hex
                 recovery.mkdir(parents=True)
                 shutil.move(str(folder), str(recovery/workbook_name))
-            for message in _original_extract(file_path, workbook_name, is_two_column):
+            for message in _original_extract(file_path, workbook_name, is_two_column, renderer, annotations):
                 data = json.loads(message.removeprefix('data: ').strip())
                 if data.get('error'):
                     yield message

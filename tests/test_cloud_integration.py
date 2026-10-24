@@ -104,12 +104,10 @@ def test_malicious_catalog_rejected_before_writes(cloud):
     assert not (cloud.root.parent/'escape').exists()
 
 def test_cloud_edit_error_does_not_publish(cloud,monkeypatch):
-    import os
     from services.tasks import split_image_task
     before=cloud.client.objects[cloud.key('catalog.json')]
-    def fail(*args,**kwargs): raise OSError('simulated rename failure')
-    monkeypatch.setattr(os,'rename',fail)
-    with pytest.raises(RuntimeError): list(split_image_task('sample',1))
+    cloud.client.fail=True
+    with pytest.raises(OSError): list(split_image_task('sample',1))
     assert cloud.client.objects[cloud.key('catalog.json')]==before
 
 def test_single_crop_cover_and_sync_cloud(cloud):

@@ -31,6 +31,8 @@ store.restore()
 
 from services.security import install_csrf
 install_csrf(app)
+from services.presentation import install_presentation
+install_presentation(app)
 
 DB_PATH = os.environ.get('DB_PATH', os.path.join(os.path.dirname(__file__), 'admin.db'))
 
@@ -186,7 +188,7 @@ def admin_required(f):
             safe_component(value.strip())
         for value in data.get('filenames', []):
             safe_component(value)
-        if store.enabled and f.__name__ in ('run_crop_single', 'upload_cover'):
+        if store.enabled and f.__name__ == 'upload_cover':
             folder = request.args.get('folder') or data.get('folder') or request.form.get('folder')
             safe_component(folder)
             with store.lock:
@@ -648,7 +650,28 @@ def run_extract():
     from pathlib import Path
     if not Path(path).resolve().is_relative_to(Path(UPLOAD_FOLDER).resolve()):
         return jsonify({'error': 'PDF must be uploaded first'}), 400
-    return Response(extract_pdf_task(path, name, col), mimetype='text/event-stream', headers={'Cache-Control':'no-cache', 'X-Accel-Buffering':'no'})
+    return Response(extract_pdf_task(path, name, col, request.args.get('renderer','pdfium'), request.args.get('annotations','1')=='1'), mimetype='text/event-stream', headers={'Cache-Control':'no-cache', 'X-Accel-Buffering':'no'})
+
+@app.route('/api/admin/pdf_preview')
+@admin_required
+def pdf_preview():
+    from pathlib import Path
+    from services.pdf_rendering import open_document, render_page
+    from PIL import Image
+    import io
+    name = request.args.get('name','')
+    from services.storage import safe_component
+    safe_component(name)
+    path = (Path(UPLOAD_FOLDER)/(name+'.pdf')).resolve()
+    if not path.is_relative_to(Path(UPLOAD_FOLDER).resolve()) or not path.is_file():
+        return jsonify({'error':'먼저 PDF를 업로드해 주세요.'}), 404
+    engine = request.args.get('renderer','pdfium')
+    try: page = int(request.args.get('page','1'))-1
+    except ValueError: return jsonify({'error':'페이지 번호가 잘못되었습니다.'}), 400
+    with open_document(path,engine) as document:
+        pixels = render_page(document,page,engine,request.args.get('annotations','1')=='1',scale=1.5)
+    output = io.BytesIO(); Image.fromarray(pixels).save(output,format='PNG')
+    return Response(output.getvalue(),mimetype='image/png',headers={'Cache-Control':'no-store'})
 
 @app.route('/api/run/trim', methods=['GET'])
 @admin_required
@@ -678,6 +701,9 @@ def run_crop_single():
     filename = request.args.get('filename', '') or (request.get_json(silent=True) or {}).get('filename', '')
     if not folder or not filename:
         return jsonify({'error': 'folder 및 filename 파라미터가 필요합니다.'}), 400
+    if store.enabled:
+        from services.book_editing import edit_selected
+        return jsonify(edit_selected(store, folder, [filename], operation='crop'))
 
     img_path = os.path.join(BASE_DIR, 'img', folder, filename)
     if not os.path.exists(img_path):
@@ -709,6 +735,9 @@ def run_crop_single():
 def run_split_sync():
     folder = request.args.get('folder', '')
     filename = request.args.get('filename', '')
+    if store.enabled and filename:
+        from services.book_editing import edit_selected
+        return jsonify(edit_selected(store, folder, [filename]))
     if filename:
         list(split_image_task(folder, filename))
     else:
@@ -732,6 +761,11 @@ def run_bulk_split():
         return jsonify({'ok': False, 'error': 'folder 파라미터가 필요합니다.'}), 400
     if not filenames:
         return jsonify({'ok': False, 'error': '분할할 파일이 선택되지 않았습니다.'}), 400
+    if store.enabled:
+        from services.book_editing import edit_selected
+        result = edit_selected(store, folder, filenames)
+        return jsonify({**result, 'total':len(set(filenames)), 'success':len(set(filenames)),
+            'failed':0, 'results':[{'file':name, 'ok':True} for name in dict.fromkeys(filenames)]})
 
     results = []
     import re
@@ -759,6 +793,8 @@ def run_bulk_split():
 def run_build_sync():
     folder = request.args.get('folder', '')
     cover_url = request.args.get('cover_url', '') or None
+    if store.enabled and not cover_url and folder in store.fresh_asset_folders:
+        return jsonify({'ok':True, 'assets_ready':True})
     list(generate_assets_task([folder], cover_url=cover_url))
     return jsonify({"ok": True})
 
