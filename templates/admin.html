@@ -520,6 +520,18 @@
                         <span>2단 편집본 (좌/우 나뉨)</span>
                     </label>
                 </div>
+                <div class="form-group">
+                    <label for="pdfRenderer">PDF 화면 처리 방식</label>
+                    <select id="pdfRenderer">
+                        <option value="pdfium">호환 모드 — PDFium</option>
+                        <option value="mupdf">기존 모드 — MuPDF</option>
+                    </select>
+                    <label for="pdfPreviewPage" style="margin-top:12px;">미리보기 페이지</label>
+                    <input type="number" id="pdfPreviewPage" min="1" value="1" style="max-width:120px;">
+                    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;"><input type="checkbox" id="pdfAnnotations" checked>PDF 필기·주석 포함</label>
+                    <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-top:10px;">검은 도형이나 글자 깨짐이 있으면 먼저 미리보기로 원본과 비교해 주세요. 처리 방식을 바꾸거나 필기·주석 포함을 꺼서 비교할 수 있습니다.</p>
+                </div>
+                <button class="btn" onclick="previewPDF()" style="margin-bottom:12px;background:var(--surface);color:var(--text-main);border:1px solid var(--border);">PDF 화면 미리보기</button>
                 <button class="btn" id="extractBtn" onclick="runExtract()">추출 시작하기</button>
             </div>
         </div>
@@ -1011,6 +1023,37 @@
             }
         }
 
+        async function uploadPDFSelection() {
+            const file = document.getElementById('pdfFile').files[0];
+            const name = document.getElementById('workbookName').value.trim();
+            if (!file || !name) throw new Error('파일과 교재 이름을 확인해 주세요.');
+            const formData = new FormData();
+            formData.append('file',file); formData.append('name',name);
+            const response = await fetch('/api/upload_pdf',{method:'POST',body:formData});
+            if (!response.ok) {
+                if (response.status === 413) throw new Error('PDF 업로드 용량은 100MB까지 지원합니다.');
+                let message = '업로드 실패';
+                try { message = (await response.json()).error || message; } catch (_) {}
+                throw new Error(message);
+            }
+            return name;
+        }
+
+        function renderingOptions() {
+            return `renderer=${encodeURIComponent(document.getElementById('pdfRenderer').value)}&annotations=${document.getElementById('pdfAnnotations').checked ? '1' : '0'}`;
+        }
+
+        async function previewPDF() {
+            const preview = window.open('about:blank','_blank');
+            try {
+                const name = await uploadPDFSelection();
+                const page = document.getElementById('pdfPreviewPage').value;
+                const url = `/api/admin/pdf_preview?name=${encodeURIComponent(name)}&page=${encodeURIComponent(page)}&${renderingOptions()}`;
+                if (preview) preview.location = url;
+                else alert('브라우저에서 미리보기 창을 허용한 뒤 다시 눌러 주세요.');
+            } catch (error) { if (preview) preview.close(); alert(error.message); }
+        }
+
         async function runExtract() {
             const fileInput = document.getElementById('pdfFile');
             const name = document.getElementById('workbookName').value.trim();
@@ -1022,12 +1065,8 @@
             btn.disabled = true;
             btn.textContent = '업로드 중...';
 
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            formData.append('name', name);
             try {
-                const res = await fetch('/api/upload_pdf', { method: 'POST', body: formData });
-                if (!res.ok) { const d = await res.json(); throw new Error(d.error || '업로드 실패'); }
+                await uploadPDFSelection();
             } catch (e) {
                 btn.disabled = false; btn.textContent = '추출 시작하기';
                 return alert('❌ ' + e.message);
@@ -1036,7 +1075,7 @@
             btn.textContent = '추출 시작하기';
             btn.disabled = false;
 
-            startTask(`/api/run/extract?name=${encodeURIComponent(name)}&col=${col}&use_upload=1`);
+            startTask(`/api/run/extract?name=${encodeURIComponent(name)}&col=${col}&use_upload=1&${renderingOptions()}`);
         }
 
         // 2. 여백 정리 시작
