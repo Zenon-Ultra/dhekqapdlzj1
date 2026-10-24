@@ -29,7 +29,7 @@ def migrate(storage, apply=False, resume=False, verify=False):
             with storage.lock: storage.publish([folder], progress=progress)
             print('Book catalog committed: '+folder, flush=True)
     if verify:
-        if __import__('os').environ.get('B2_UPLOAD_VERIFICATION','readback') == 'etag':
+        if __import__('os').environ.get('B2_UPLOAD_VERIFICATION','etag') == 'etag':
             # ListObjects returns the server ETag and size without one GET per image.
             objects={}
             pages=storage.s3().get_paginator('list_objects_v2').paginate(Bucket=storage.bucket,Prefix=storage.key('objects/'))

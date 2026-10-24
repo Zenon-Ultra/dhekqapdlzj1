@@ -622,7 +622,16 @@ def upload_pdf():
         return jsonify({"error": "PDF 파일만 업로드할 수 있습니다."}), 400
     save_path = os.path.join(UPLOAD_FOLDER, f"{name}.pdf")
     if os.path.exists(save_path):
-        return jsonify({'error': 'An upload already exists; choose a new name'}), 409
+        import hashlib
+        def digest(stream):
+            result = hashlib.sha256()
+            for block in iter(lambda: stream.read(1024 * 1024), b''): result.update(block)
+            return result.digest()
+        with open(save_path, 'rb') as existing:
+            same = digest(existing) == digest(file.stream)
+        file.stream.seek(0)
+        if same: return jsonify({'ok': True, 'path': save_path, 'reused': True})
+        return jsonify({'error': '같은 이름의 다른 PDF가 있습니다. 새 이름을 입력해 주세요.'}), 409
     file.save(save_path)
     return jsonify({"ok": True, "path": save_path})
 
@@ -639,7 +648,7 @@ def run_extract():
     from pathlib import Path
     if not Path(path).resolve().is_relative_to(Path(UPLOAD_FOLDER).resolve()):
         return jsonify({'error': 'PDF must be uploaded first'}), 400
-    return Response(extract_pdf_task(path, name, col), mimetype='text/event-stream')
+    return Response(extract_pdf_task(path, name, col), mimetype='text/event-stream', headers={'Cache-Control':'no-cache', 'X-Accel-Buffering':'no'})
 
 @app.route('/api/run/trim', methods=['GET'])
 @admin_required

@@ -556,15 +556,63 @@ merge_images_task = durable_task(merge_images_task)
 delete_image_task = durable_task(delete_image_task)
 _original_extract = extract_pdf_task
 def extract_pdf_task(file_path, workbook_name, is_two_column):
-    safe_component(workbook_name)
-    # Never overwrite a previously extracted book.
-    folder = os.path.join('img', workbook_name)
-    if os.path.isdir(folder) and os.listdir(folder):
-        raise ValueError('Book already exists; choose a new book name')
-    with store.lock:
-        messages = list(_original_extract(file_path, workbook_name, is_two_column))
-        if any('🚨' in m for m in messages):
-            raise RuntimeError('PDF extraction failed; partial files retained locally')
-        store.publish([workbook_name])
-        if store.enabled: store.evict([workbook_name])
-        yield from messages
+    from pathlib import Path
+    from concurrent.futures import ThreadPoolExecutor
+    from queue import Queue, Empty
+    try:
+        safe_component(workbook_name)
+        folder = Path('img') / workbook_name
+        yield yield_msg('⚙️ PDF 추출 작업을 시작합니다.', 0)
+        with store.lock:
+            published = store.enabled and any(k.startswith('img/'+workbook_name+'/') for k in store.entries)
+            if published or (not store.enabled and folder.is_dir() and any(folder.iterdir())):
+                raise ValueError('이미 존재하는 교재입니다. 새 교재 이름을 입력해 주세요.')
+            if store.enabled and folder.is_dir() and any(folder.iterdir()):
+                # An earlier unpublished extraction may have failed at the B2 cap.
+                # Keep its files before retrying the same PDF; never overwrite them.
+                import shutil, uuid
+                recovery = store.root/'.storage-recovery'/uuid.uuid4().hex
+                recovery.mkdir(parents=True)
+                shutil.move(str(folder), str(recovery/workbook_name))
+            for message in _original_extract(file_path, workbook_name, is_two_column):
+                data = json.loads(message.removeprefix('data: ').strip())
+                if data.get('error'):
+                    yield message
+                    return
+                if 'percent' in data: data['percent'] = min(80, int(data['percent'] * .8))
+                yield 'data: '+json.dumps(data, ensure_ascii=False)+'\n\n'
+            if store.enabled:
+                generate_book_assets(workbook_name, image_dir=folder.resolve(),
+                    output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html')
+                yield yield_msg('☁️ B2에 업로드하고 서버 체크섬을 검증합니다.', 85)
+                updates = Queue()
+                def progress(current, total, relative):
+                    if current % 25 == 0 or current == total:
+                        updates.put((current, total))
+                with ThreadPoolExecutor(max_workers=1) as worker:
+                    result = worker.submit(store.publish, [workbook_name], progress=progress)
+                    result.add_done_callback(lambda completed: updates.put(None))
+                    while not result.done() or not updates.empty():
+                        try:
+                            update = updates.get(timeout=10)
+                            if update is None: continue
+                            current, total = update
+                            yield yield_msg(f'☁️ B2 저장 검증: {current}/{total}개', 85+int(13*current/max(1,total)))
+                        except Empty:
+                            if not result.done(): yield yield_msg('☁️ B2 저장 중입니다. 잠시 기다려 주세요.', 90)
+                    result.result()
+                store.evict([workbook_name])
+            yield yield_msg('🎉 문항 추출 및 저장이 완료되었습니다!', 100)
+    except Exception as exc:
+        response = getattr(exc, 'response', {}).get('Error', {})
+        detail = str(response.get('Message', '')).lower()
+        code = response.get('Code', '')
+        if 'cap exceeded' in detail or 'cap_exceeded' in code.lower():
+            reason = 'B2 무료 요청·전송량 또는 저장 상한에 도달했습니다. 과금 상한을 올리지 말고 초기화 후 같은 PDF로 다시 시도해 주세요. 서버의 작업 파일은 보존했습니다.'
+        elif code in ('AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'):
+            reason = 'B2 접근 권한을 확인해 주세요. 작업 파일은 보존했습니다.'
+        elif isinstance(exc, ValueError):
+            reason = str(exc)
+        else:
+            reason = '저장을 완료하지 못했습니다. 연결 상태를 확인하고 같은 PDF로 다시 시도해 주세요. 작업 파일은 보존했습니다.'
+        yield yield_msg('🚨 '+reason, 100)

@@ -10,6 +10,8 @@ from urllib.parse import quote
 from services.config import load_settings
 load_settings()
 from filelock import FileLock
+from collections import OrderedDict
+from threading import RLock
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE_MIME = {'.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.bmp':'image/bmp'}
@@ -27,14 +29,40 @@ class Store:
         self.root = Path(root)
         self.enabled = os.environ.get('STORAGE_BACKEND', 'local') == 'b2'
         self.client = client
+        self._provided_client = client is not None
+        self._process_id = os.getpid()
+        self._process_guard = RLock()
         self.entries = {}
         self.deleted_books = set()
         self.pending_deletions = {}
+        self._read_cache = OrderedDict()
+        self._read_cache_size = 0
+        self._read_cache_lock = RLock()
         self.bucket = os.environ.get('B2_BUCKET', '')
         self.prefix = os.environ.get('B2_PREFIX', 'hyperx').strip('/')
-        self.lock = FileLock(str(self.root / '.storage.lock'))
+        self._file_lock = FileLock(str(self.root / '.storage.lock'))
+
+    def _ensure_process(self):
+        # Gunicorn may import the application before forking. Neither filelock
+        # instances nor boto3 connection pools may be reused in the child.
+        process_id = os.getpid()
+        if process_id != self._process_id:
+            with self._process_guard:
+                if process_id == self._process_id: return
+                self._file_lock = FileLock(str(self.root / '.storage.lock'))
+                self._read_cache_lock = RLock()
+                self._read_cache = OrderedDict()
+                self._read_cache_size = 0
+                if not self._provided_client: self.client = None
+                self._process_id = process_id
+
+    @property
+    def lock(self):
+        self._ensure_process()
+        return self._file_lock
 
     def s3(self):
+        self._ensure_process()
         if self.client is None:
             import boto3
             from botocore.config import Config
@@ -104,15 +132,47 @@ class Store:
         if not path.is_relative_to(self.root.resolve()): raise ValueError('Unsafe path')
         return path
 
-    def verified(self, entry):
+    def _cache_read(self, digest, data):
+        self._ensure_process()
+        limit = max(0, int(os.environ.get('B2_READ_CACHE_BYTES', str(32 * 1024 * 1024))))
+        if len(data) > limit: return
+        with self._read_cache_lock:
+            previous = self._read_cache.pop(digest, None)
+            if previous is not None: self._read_cache_size -= len(previous)
+            while self._read_cache and self._read_cache_size + len(data) > limit:
+                _, removed = self._read_cache.popitem(last=False)
+                self._read_cache_size -= len(removed)
+            self._read_cache[digest] = data
+            self._read_cache_size += len(data)
+
+    def verified(self, entry, local_path=None):
+        self._ensure_process()
+        digest = entry['sha256']
+        with self._read_cache_lock:
+            cached = self._read_cache.get(digest)
+            if cached is not None:
+                self._read_cache.move_to_end(digest)
+                return cached
+        # Reuse original Git images only when their bytes match the current catalog.
+        if local_path is not None and local_path.is_file() and local_path.stat().st_size:
+            local = local_path.read_bytes()
+            if hashlib.sha256(local).hexdigest() == digest:
+                self._cache_read(digest, local)
+                return local
         data = self.read(entry['key'])
-        if hashlib.sha256(data).hexdigest() != entry['sha256']:
+        if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError('Object checksum mismatch')
+        self._cache_read(digest, data)
         return data
 
-    def serve_entry(self, entry, filename):
-        from flask import Response
-        data = self.verified(entry)
+    def serve_entry(self, entry, filename, local_path=None):
+        from flask import Response, request
+        if request.if_none_match.contains(entry['sha256']):
+            response = Response(status=304)
+            response.set_etag(entry['sha256'])
+            response.headers['Cache-Control'] = 'private, max-age=300'
+            return response
+        data = self.verified(entry, local_path=local_path)
         response = Response(data, mimetype=content_type(filename))
         response.headers['Cache-Control'] = 'private, max-age=300'
         response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -174,7 +234,7 @@ class Store:
             raise ValueError('Batch exceeds upload budget; publish fewer books')
         paths = [path for path in paths if path.is_file()]
         client = self.s3()
-        mode = os.environ.get('B2_UPLOAD_VERIFICATION', 'readback')
+        mode = os.environ.get('B2_UPLOAD_VERIFICATION', 'etag')
         if mode not in ('readback', 'etag'):
             raise ValueError('Unknown upload verification mode')
         def upload(path):
@@ -193,6 +253,7 @@ class Store:
                 if response.get('ETag', '').strip(chr(34)) != md5.hex():
                     raise ValueError('Server object MD5 mismatch; catalog unchanged')
                 entry['verification'] = 'content-md5-and-etag'
+                self._cache_read(digest, data)
             elif self.verified(entry) != data:
                 raise ValueError('Upload verification failed')
             else:
@@ -254,7 +315,7 @@ class Store:
             from flask import abort
             abort(404)
         if self.enabled and rel in self.entries:
-            return self.serve_entry(self.entries[rel], filename)
+            return self.serve_entry(self.entries[rel], filename, local_path=self.path(rel))
         return send_from_directory(self.root/'img', filename)
 
 store = Store()
