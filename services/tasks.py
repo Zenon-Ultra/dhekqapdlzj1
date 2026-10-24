@@ -10,10 +10,10 @@ from PIL import Image, ImageChops
 from book_assets import generate_book_assets
 
 def yield_msg(msg, percent=-1):
-    data = {"msg": msg}
+    data = {"msg": msg, "error": msg.startswith(("🚨", "⚠️"))}
     if percent >= 0:
         data["percent"] = percent
-    return f"data: {json.dumps(data)}\n\n"
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 # ==========================================
 # 여백 자르기 유틸리티
@@ -160,9 +160,9 @@ def extract_pdf_task(file_path, workbook_name, is_two_column):
                             
                             if final_img.shape[0] > 100:
                                 save_img = cv2.cvtColor(final_img, cv2.COLOR_RGB2BGR)
-                                out_path = os.path.join(output_dir, f"{q_num:03d}.png")
+                                out_path = os.path.join(output_dir, f"{q_num:03d}.webp")
                                 extension = os.path.splitext(out_path)[1]
-                                result, encoded_img = cv2.imencode(extension, save_img)
+                                result, encoded_img = cv2.imencode(extension, save_img, [cv2.IMWRITE_WEBP_QUALITY, 85])
                                 if result:
                                     with open(out_path, mode='w+b') as f:
                                         encoded_img.tofile(f)
@@ -189,7 +189,7 @@ def cleanup_images_task(selected_folders):
 
     for i, folder in enumerate(selected_folders):
         folder_path = os.path.join(base_dir, folder)
-        img_files = [f for f in os.listdir(folder_path) if f.endswith('.png')]
+        img_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
         yield yield_msg(f"📁 {folder} 폴더 처리 중... (총 {len(img_files)}개 이미지)", int(100 * i / folder_count))
         
         for j, img_file in enumerate(img_files):
@@ -218,11 +218,12 @@ def generate_assets_task(selected_folders, cover_url=None):
         try:
             html_path, json_path = generate_book_assets(
                 folder_name=folder,
-                image_dir=image_dir,
-                output_dir=os.path.join("textbooks"),
+                image_dir=os.path.abspath(image_dir),
+                output_dir=os.path.abspath("textbooks"),
                 title=folder,
                 subtitle="자동 생성",
-                index_path=os.path.join("templates", "main.html"),
+                index_path=os.path.abspath(os.path.join("templates", "main.html")),
+                allow_empty=True,
                 custom_cover_url=cover_url
             )
             json_str = f"{os.path.basename(json_path)} / " if json_path else ""
@@ -367,6 +368,8 @@ def merge_images_task(selected_folder, start_num_or_files, end_num=None):
         nums = [p[0] for p in sorted_pairs]
         filenames = [p[1] for p in sorted_pairs]
 
+        if len(nums) < 2 or nums != list(range(nums[0], nums[-1]+1)):
+            raise ValueError('Select at least two consecutive questions to merge')
         start_num = nums[0]
         end_num = nums[-1]
 
@@ -535,10 +538,81 @@ def delete_image_task(selected_folder, target_num_or_file):
                 os.rename(old_path, new_path)
 
         yield yield_msg("⏳ 교재 에셋 자동 갱신 중...", 80)
-        list(generate_assets_task([selected_folder]))
+        list(_generate_assets_local([selected_folder]))
 
         yield yield_msg(f"🎉 성공적으로 삭제되었습니다! ({target_num:03d}번 삭제, 이후 번호 -1 당겨짐 & 교재 에셋 갱신 완료)", 100)
     except Exception as e:
         yield yield_msg(f"🚨 오류 발생: {e}", 100)
 
 
+
+# Existing editing algorithms operate on a temporary local copy of one book.
+from services.storage import durable_task, store, safe_component
+cleanup_images_task = durable_task(cleanup_images_task, plural=True)
+_generate_assets_local = generate_assets_task
+generate_assets_task = durable_task(generate_assets_task, plural=True)
+split_image_task = durable_task(split_image_task)
+merge_images_task = durable_task(merge_images_task)
+delete_image_task = durable_task(delete_image_task)
+_original_extract = extract_pdf_task
+def extract_pdf_task(file_path, workbook_name, is_two_column):
+    from pathlib import Path
+    from concurrent.futures import ThreadPoolExecutor
+    from queue import Queue, Empty
+    try:
+        safe_component(workbook_name)
+        folder = Path('img') / workbook_name
+        yield yield_msg('⚙️ PDF 추출 작업을 시작합니다.', 0)
+        with store.lock:
+            published = store.enabled and any(k.startswith('img/'+workbook_name+'/') for k in store.entries)
+            if published or (not store.enabled and folder.is_dir() and any(folder.iterdir())):
+                raise ValueError('이미 존재하는 교재입니다. 새 교재 이름을 입력해 주세요.')
+            if store.enabled and folder.is_dir() and any(folder.iterdir()):
+                # An earlier unpublished extraction may have failed at the B2 cap.
+                # Keep its files before retrying the same PDF; never overwrite them.
+                import shutil, uuid
+                recovery = store.root/'.storage-recovery'/uuid.uuid4().hex
+                recovery.mkdir(parents=True)
+                shutil.move(str(folder), str(recovery/workbook_name))
+            for message in _original_extract(file_path, workbook_name, is_two_column):
+                data = json.loads(message.removeprefix('data: ').strip())
+                if data.get('error'):
+                    yield message
+                    return
+                if 'percent' in data: data['percent'] = min(80, int(data['percent'] * .8))
+                yield 'data: '+json.dumps(data, ensure_ascii=False)+'\n\n'
+            if store.enabled:
+                generate_book_assets(workbook_name, image_dir=folder.resolve(),
+                    output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html')
+                yield yield_msg('☁️ B2에 업로드하고 서버 체크섬을 검증합니다.', 85)
+                updates = Queue()
+                def progress(current, total, relative):
+                    if current % 25 == 0 or current == total:
+                        updates.put((current, total))
+                with ThreadPoolExecutor(max_workers=1) as worker:
+                    result = worker.submit(store.publish, [workbook_name], progress=progress)
+                    result.add_done_callback(lambda completed: updates.put(None))
+                    while not result.done() or not updates.empty():
+                        try:
+                            update = updates.get(timeout=10)
+                            if update is None: continue
+                            current, total = update
+                            yield yield_msg(f'☁️ B2 저장 검증: {current}/{total}개', 85+int(13*current/max(1,total)))
+                        except Empty:
+                            if not result.done(): yield yield_msg('☁️ B2 저장 중입니다. 잠시 기다려 주세요.', 90)
+                    result.result()
+                store.evict([workbook_name])
+            yield yield_msg('🎉 문항 추출 및 저장이 완료되었습니다!', 100)
+    except Exception as exc:
+        response = getattr(exc, 'response', {}).get('Error', {})
+        detail = str(response.get('Message', '')).lower()
+        code = response.get('Code', '')
+        if 'cap exceeded' in detail or 'cap_exceeded' in code.lower():
+            reason = 'B2 무료 요청·전송량 또는 저장 상한에 도달했습니다. 과금 상한을 올리지 말고 초기화 후 같은 PDF로 다시 시도해 주세요. 서버의 작업 파일은 보존했습니다.'
+        elif code in ('AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'):
+            reason = 'B2 접근 권한을 확인해 주세요. 작업 파일은 보존했습니다.'
+        elif isinstance(exc, ValueError):
+            reason = str(exc)
+        else:
+            reason = '저장을 완료하지 못했습니다. 연결 상태를 확인하고 같은 PDF로 다시 시도해 주세요. 작업 파일은 보존했습니다.'
+        yield yield_msg('🚨 '+reason, 100)

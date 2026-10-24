@@ -109,10 +109,14 @@ def _append_index_card(index_path: Path, book_name: str, title: str, subtitle: s
             index_path.write_text(html_text, encoding="utf-8")
         return
 
-    marker = '<div class="card-grid" id="cardGrid">'
-    if marker not in html_text:
-        html_text = html_text.replace("</body>", f"<div class=\"card-grid\" id=\"cardGrid\"></div></body>", 1)
-        html_text = html_text.replace("<div class=\"card-grid\" id=\"cardGrid\"></div>", marker + "\n", 1)
+    marker_pattern = r"<div\b(?=[^>]*\bid=['\"]cardGrid['\"])[^>]*>"
+    match = re.search(marker_pattern, html_text)
+    if not match:
+        position = html_text.rfind('</body>')
+        if position < 0: position = len(html_text)
+        html_text = html_text[:position] + '<div class="card-grid" id="cardGrid"></div>' + html_text[position:]
+        match = re.search(marker_pattern, html_text)
+    insertion = match.end()
 
     card_html = f"""
     <a class="card" href="textbooks/{html_name}" data-title="{html.escape(title)}" data-id="{html.escape(book_name)}">
@@ -127,7 +131,7 @@ def _append_index_card(index_path: Path, book_name: str, title: str, subtitle: s
       </div>
     </a>
     """
-    html_text = html_text.replace(marker, marker + card_html, 1)
+    html_text = html_text[:insertion] + card_html + html_text[insertion:]
     index_path.write_text(html_text, encoding="utf-8")
 
 
@@ -140,6 +144,7 @@ def generate_book_assets(
     template_path: Optional[Path | str] = None,
     index_path: Optional[Path | str] = None,
     custom_cover_url: Optional[str] = None,
+    allow_empty: bool = False,
 ):
     root = Path(__file__).resolve().parent
 
@@ -163,10 +168,10 @@ def generate_book_assets(
         raise FileNotFoundError(f"이미지 폴더가 없습니다: {image_dir}")
 
     image_files = sorted(
-        [p.name for p in image_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}]
+        [p.name for p in image_dir.iterdir() if p.is_file() and p.stem.lower() != "cover" and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}]
     )
 
-    if not image_files:
+    if not image_files and not allow_empty:
         raise FileNotFoundError(f"이미지 폴더에 이미지가 없습니다: {image_dir}")
 
     book_name = slugify(folder_name)
@@ -220,15 +225,15 @@ def generate_book_assets(
     if ebsi_path.exists():
         viewer_html = ebsi_path.read_text(encoding="utf-8")
         
-        viewer_html = re.sub(r"const BOOK_TITLE = '.*?';", f"const BOOK_TITLE = '{title}';", viewer_html)
-        viewer_html = re.sub(r"const BOOK_SUB\s*= '.*?';", f"const BOOK_SUB   = '{subtitle}';", viewer_html)
-        if "const BOOK_FOLDER" in viewer_html:
-            viewer_html = re.sub(r"const BOOK_FOLDER\s*=\s*'.*?';", f"const BOOK_FOLDER = '{folder_name}';", viewer_html)
-        else:
-            viewer_html = viewer_html.replace("const BOOK_TITLE =", f"const BOOK_FOLDER = '{folder_name}';\n    const BOOK_TITLE =", 1)
-        
-        images_js = ",\n".join([f"{{ file: '{img['file']}', page: 0 }}" for img in images])
-        viewer_html = re.sub(r"const IMAGES = \[.*?\];", f"const IMAGES = [\n{images_js}\n];", viewer_html, flags=re.DOTALL)
+        def js(value):
+            return json.dumps(value, ensure_ascii=False).replace('<', '\\u003c')
+        for variable, value in [('BOOK_TITLE', title), ('BOOK_SUB', subtitle), ('BOOK_FOLDER', folder_name), ('IMAGES', images)]:
+            pattern = r'const ' + variable + r'\s*=\s*(?:\[.*?\]|[\"\'].*?[\"\']);'
+            replacement = f'const {variable} = {js(value)};'
+            if re.search(pattern, viewer_html, re.DOTALL):
+                viewer_html = re.sub(pattern, lambda m: replacement, viewer_html, count=1, flags=re.DOTALL)
+            elif variable == 'BOOK_FOLDER':
+                viewer_html = viewer_html.replace('const BOOK_TITLE', replacement + '\nconst BOOK_TITLE', 1)
     else:
         book_json = json.dumps(data, ensure_ascii=False)
         viewer_html = f"""<!DOCTYPE html>
@@ -278,9 +283,12 @@ def generate_book_assets(
 </html>
 """
     html_path.write_text(viewer_html, encoding="utf-8")
+    json_path = output_dir / f"{book_name}.json"
+    json_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    _write_shared_viewer(output_dir, book_name, title, subtitle)
 
 
     if index_path.exists() or index_path.parent.exists():
         _append_index_card(index_path, book_name, title, subtitle, html_path.name, preview_image)
 
-    return html_path, None
+    return html_path, json_path

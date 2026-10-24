@@ -3,6 +3,9 @@ import os
 import sqlite3
 from functools import wraps
 
+from services.config import load_settings
+load_settings()
+
 from services.tasks import (
     extract_pdf_task, cleanup_images_task, generate_assets_task,
     split_image_task, merge_images_task, delete_image_task
@@ -13,12 +16,26 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from services.github_sync import start_auto_sync, is_auto_sync_enabled, set_auto_sync_enabled
 
+from services.config import load_settings
+load_settings()
 app = Flask(__name__)
-app.secret_key = 'super_secret_admin_key_hyperx_2026'
-DB_PATH = os.path.join(os.path.dirname(__file__), 'admin.db')
+app.secret_key = os.environ.get('SECRET_KEY') or (__import__('secrets').token_hex(32) if not os.environ.get('RENDER') else None)
+if not app.secret_key or (os.environ.get('RENDER') and len(app.secret_key) < 32):
+    raise RuntimeError('SECRET_KEY is required on Render')
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=bool(os.environ.get('RENDER')), MAX_CONTENT_LENGTH=100 * 1024 * 1024)
+from services.database import connect
+from services.storage import store
+if os.environ.get('RENDER') and not store.enabled:
+    raise RuntimeError('STORAGE_BACKEND=b2 is required on Render')
+store.restore()
+
+from services.security import install_csrf
+install_csrf(app)
+
+DB_PATH = os.environ.get('DB_PATH', os.path.join(os.path.dirname(__file__), 'admin.db'))
 
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         # users 테이블 생성 (role 컬럼 포함)
         c.execute('''CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT DEFAULT 'user')''')
@@ -54,22 +71,31 @@ def init_db():
             )
         ''')
 
+        try:
+            c.execute('ALTER TABLE scraps ADD COLUMN snapshot_key TEXT')
+        except sqlite3.OperationalError:
+            pass
+
         # system_config 테이블 생성 (점검 모드 등 시스템 설정 저장)
         c.execute('''CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)''')
 
-        # admin123 계정 생성 또는 역할 업데이트
-        c.execute("SELECT role FROM users WHERE username='admin123'")
-        row = c.fetchone()
-        hashed = generate_password_hash('admin123')
-        if not row:
-            c.execute("INSERT INTO users (username, password, role) VALUES ('admin123', ?, 'admin')", (hashed,))
-        else:
-            c.execute("UPDATE users SET role='admin' WHERE username='admin123'")
+        username = os.environ.get('ADMIN_USERNAME')
+        password = os.environ.get('ADMIN_PASSWORD')
+        c.execute("SELECT password FROM users WHERE username='admin123'")
+        legacy = c.fetchone()
+        if legacy and check_password_hash(legacy[0], 'admin123'):
+            c.execute("UPDATE users SET password=?, role='user' WHERE username='admin123'", (generate_password_hash(__import__('secrets').token_urlsafe(48)),))
+        if username and password:
+            if len(password) < 12:
+                raise RuntimeError('ADMIN_PASSWORD must contain at least 12 characters')
+            c.execute('SELECT username FROM users WHERE username=?', (username,))
+            if not c.fetchone():
+                c.execute("INSERT INTO users (username,password,role) VALUES (?,?,'admin')", (username, generate_password_hash(password)))
         conn.commit()
 
 def get_maintenance_mode():
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
             c.execute("SELECT value FROM system_config WHERE key='maintenance_mode'")
@@ -81,17 +107,21 @@ def get_maintenance_mode():
     return False
 
 def set_maintenance_mode(enabled: bool):
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, value TEXT)")
         val = '1' if enabled else '0'
-        c.execute("INSERT OR REPLACE INTO system_config (key, value) VALUES ('maintenance_mode', ?)", (val,))
+        c.execute("INSERT INTO system_config (key, value) VALUES ('maintenance_mode', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (val,))
         conn.commit()
+
+@app.errorhandler(ValueError)
+def invalid_input(exc):
+    return jsonify({'error': str(exc)}), 400
 
 @app.before_request
 def check_maintenance_mode():
     # 관리자 로그인 사용자는 제한 없음
-    if session.get('admin_logged_in'):
+    if session.get('role') == 'admin':
         return None
     
     # 점검 모드가 OFF면 통과
@@ -100,7 +130,7 @@ def check_maintenance_mode():
 
     # 허용되는 관리자/로그인/정적 자원 라우트
     path = request.path
-    allowed_prefixes = ['/admin', '/api/admin', '/static', '/favicon.ico']
+    allowed_prefixes = ['/admin', '/api/admin', '/login', '/logout', '/static', '/favicon.ico']
     if any(path.startswith(prefix) for prefix in allowed_prefixes):
         return None
 
@@ -146,6 +176,27 @@ def admin_required(f):
             if request.path.startswith('/api/'):
                 return jsonify({"error": "Forbidden: 관리자 권한이 필요합니다."}), 403
             return redirect(url_for('main_page'))
+        from services.storage import safe_component
+        data = request.get_json(silent=True) or {}
+        for key in ('folder', 'name', 'filename', 'target'):
+            value = request.args.get(key) or data.get(key) or request.form.get(key)
+            if value:
+                safe_component(str(value))
+        for value in (request.args.get('files', '').split(',') if request.args.get('files') else []):
+            safe_component(value.strip())
+        for value in data.get('filenames', []):
+            safe_component(value)
+        if store.enabled and f.__name__ in ('run_crop_single', 'upload_cover'):
+            folder = request.args.get('folder') or data.get('folder') or request.form.get('folder')
+            safe_component(folder)
+            with store.lock:
+                store.freeze_scraps(folder)
+                store.hydrate(folder)
+                result = app.make_response(f(*args, **kwargs))
+                if result.status_code < 400:
+                    store.publish([folder])
+                    store.evict([folder])
+                return result
         return f(*args, **kwargs)
     return decorated_function
 
@@ -183,7 +234,7 @@ def signup():
         if len(username) < 3:
             return render_template('signup.html', error="아이디는 3자 이상이어야 합니다.")
 
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT username FROM users WHERE username=?", (username,))
             if c.fetchone():
@@ -200,16 +251,17 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT password, role FROM users WHERE username=?", (username,))
             user = c.fetchone()
             if user and check_password_hash(user[0], password):
+                session.clear()
                 session['logged_in'] = True
                 session['username'] = username
                 session['role'] = user[1] or 'user'
                 next_url = request.args.get('next')
-                if next_url:
+                if next_url and next_url.startswith('/') and not next_url.startswith('//') and '\\' not in next_url:
                     return redirect(next_url)
                 return redirect(url_for('main_page'))
             else:
@@ -250,12 +302,14 @@ def ebsi_sc():
 # ==========================================
 @app.route('/img/<path:filename>')
 def serve_img(filename):
-    return send_from_directory('img', filename)
+    return store.serve(filename)
 
 @app.route('/textbooks/<path:filename>')
 @login_required
 def serve_textbooks(filename):
-    return send_from_directory('textbooks', filename)
+    if store.is_deleted_asset(filename):
+        return jsonify({'error': 'Book deleted'}), 404
+    return send_from_directory(store.root/'textbooks', filename)
 
 # ==========================================
 # APIs
@@ -274,8 +328,8 @@ def user_info():
 def list_folders():
     base_dir = "img"
     if not os.path.exists(base_dir):
-        return jsonify({"folders": []})
-    folders = [f for f in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, f))]
+        return jsonify({"folders": sorted(store.pending_deletions)})
+    folders = sorted(set(f for f in os.listdir(base_dir) if f not in store.deleted_books and os.path.isdir(os.path.join(base_dir, f))) | set(store.pending_deletions))
     return jsonify({"folders": folders})
 
 @app.route('/api/books', methods=['GET'])
@@ -291,7 +345,8 @@ def list_books():
     books = []
     if os.path.exists(textbooks_dir):
         for fname in sorted(os.listdir(textbooks_dir)):
-            if not fname.endswith('.html'):
+            if store.is_deleted_asset(fname): continue
+            if not fname.endswith('.html') or fname == 'viewer.html':
                 continue
             book_name = fname[:-5]  # .html 제거
             meta = {}
@@ -392,7 +447,7 @@ def upload_cover():
 
     # 교재 에셋 갱신
     try:
-        generate_book_assets(target_folder_name, custom_cover_url=cover_url)
+        generate_book_assets(target_folder_name, image_dir=store.root/'img'/target_folder_name, output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html', custom_cover_url=cover_url)
     except Exception:
         pass
 
@@ -413,7 +468,7 @@ def sync_books():
         if not os.path.isdir(folder_path):
             continue
         try:
-            generate_book_assets(folder)
+            list(generate_assets_task([folder]))
             synced.append(folder)
         except Exception as e:
             errors.append({'folder': folder, 'error': str(e)})
@@ -430,6 +485,8 @@ def sync_books():
 @login_required
 def list_folder_images():
     folder = request.args.get('folder', '')
+    from services.storage import safe_component
+    safe_component(folder)
     base_dir = os.path.join("img", folder)
     if not folder or not os.path.exists(base_dir):
         return jsonify({"images": []})
@@ -442,20 +499,21 @@ def list_folder_images():
 @login_required
 def manage_scraps():
     username = session['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         if request.method == 'GET':
             book_folder = request.args.get('book_folder')
             if book_folder:
-                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at FROM scraps WHERE username=? AND book_folder=? ORDER BY question_num ASC, id ASC", (username, book_folder))
+                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at, snapshot_key FROM scraps WHERE username=? AND book_folder=? ORDER BY question_num ASC, id ASC", (username, book_folder))
             else:
-                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at FROM scraps WHERE username=? ORDER BY created_at DESC", (username,))
+                c.execute("SELECT id, book_folder, book_title, image_file, question_num, created_at, snapshot_key FROM scraps WHERE username=? ORDER BY created_at DESC", (username,))
             rows = c.fetchall()
             scraps = [{
                 "id": r[0],
                 "book_folder": r[1],
                 "book_title": r[2],
                 "image_file": r[3],
+                "image_url": url_for('scrap_image', scrap_id=r[0]) if r[6] else None,
                 "question_num": r[4],
                 "created_at": r[5]
             } for r in rows]
@@ -469,21 +527,24 @@ def manage_scraps():
             if not book_folder or not items:
                 return jsonify({"error": "book_folder 및 items 데이터가 필요합니다."}), 400
             
-            added_count = 0
-            for item in items:
-                img_file = item.get('file', '')
-                q_num = item.get('num', 0)
-                if img_file:
-                    try:
-                        c.execute(
-                            "INSERT OR IGNORE INTO scraps (username, book_folder, book_title, image_file, question_num) VALUES (?, ?, ?, ?, ?)",
-                            (username, book_folder, book_title, img_file, q_num)
-                        )
-                        if c.rowcount > 0:
-                            added_count += 1
-                    except sqlite3.Error:
-                        pass
-            conn.commit()
+            with store.lock:
+                if book_folder in store.deleted_books:
+                    return jsonify({'error': '삭제된 교재에는 스크랩을 추가할 수 없습니다.'}), 410
+                added_count = 0
+                for item in items:
+                    img_file = item.get('file', '')
+                    q_num = item.get('num', 0)
+                    if img_file:
+                        try:
+                            c.execute(
+                                "INSERT INTO scraps (username, book_folder, book_title, image_file, question_num, snapshot_key) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                                (username, book_folder, book_title, img_file, q_num, store.entries.get('img/'+book_folder+'/'+img_file.split('/')[-1], {}).get('key') if store.enabled else None)
+                            )
+                            if c.rowcount > 0:
+                                added_count += 1
+                        except sqlite3.Error:
+                            pass
+                conn.commit()
             return jsonify({"ok": True, "added": added_count})
 
         elif request.method == 'DELETE':
@@ -501,6 +562,52 @@ def manage_scraps():
             conn.commit()
             return jsonify({"ok": True})
 
+@app.route('/api/scraps/<int:scrap_id>/image')
+@login_required
+def scrap_image(scrap_id):
+    with connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT snapshot_key, image_file FROM scraps WHERE id=? AND username=?', (scrap_id, session['username']))
+        row = c.fetchone()
+    if not row or not row[0]:
+        return jsonify({'error': 'Image not found'}), 404
+    digest = row[0].rsplit('/', 1)[-1]
+    if row[0] != store.key('objects/'+digest):
+        return jsonify({'error': 'Invalid snapshot'}), 400
+    if len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+        return jsonify({'error': 'Invalid snapshot'}), 400
+    if not store.enabled:
+        return send_from_directory(store.root/'cloud-objects', digest)
+    return store.serve_entry({'key':row[0], 'sha256':digest}, row[1])
+
+@app.route('/api/admin/books/delete', methods=['POST'])
+@admin_required
+def delete_whole_book():
+    data = request.get_json(silent=True) or {}
+    folder = data.get('folder', '')
+    if not isinstance(folder, str) or not folder or data.get('confirm_name') != folder:
+        return jsonify({'error': '삭제할 교재 이름을 정확히 입력해 주세요.'}), 400
+    try:
+        result = store.delete_book(folder)
+    except FileNotFoundError:
+        return jsonify({'error': '교재를 찾을 수 없습니다.'}), 404
+    except Exception as exc:
+        if isinstance(exc, ValueError): raise
+        return jsonify({'error': '삭제를 완료하지 못했습니다. B2 삭제 권한·연결을 확인한 뒤 같은 교재를 다시 삭제해 주세요.', 'pending': folder in store.pending_deletions}), 503
+    return jsonify({'ok': True, **result, 'message': '교재·문제사진·에셋과 연결된 스크랩을 삭제했습니다. B2 전용 파일은 과거 버전까지 제거했고, 다른 교재와 공유하는 파일은 유지했습니다.'})
+
+@app.route('/api/admin/storage_usage')
+@admin_required
+def admin_storage_usage():
+    from services.usage import storage_usage
+    try:
+        response = jsonify(storage_usage(store, DB_PATH))
+    except Exception:
+        app.logger.warning('Usage measurement unavailable')
+        return jsonify({'error': '용량을 조회하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.'}), 503
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
 # ── Admin Only APIs ──
 @app.route('/api/upload_pdf', methods=['POST'])
 @admin_required
@@ -509,9 +616,22 @@ def upload_pdf():
         return jsonify({"error": "파일이 없습니다."}), 400
     file = request.files['file']
     name = request.form.get('name', 'upload').strip()
+    from services.storage import safe_component
+    safe_component(name)
     if not file.filename.lower().endswith('.pdf'):
         return jsonify({"error": "PDF 파일만 업로드할 수 있습니다."}), 400
     save_path = os.path.join(UPLOAD_FOLDER, f"{name}.pdf")
+    if os.path.exists(save_path):
+        import hashlib
+        def digest(stream):
+            result = hashlib.sha256()
+            for block in iter(lambda: stream.read(1024 * 1024), b''): result.update(block)
+            return result.digest()
+        with open(save_path, 'rb') as existing:
+            same = digest(existing) == digest(file.stream)
+        file.stream.seek(0)
+        if same: return jsonify({'ok': True, 'path': save_path, 'reused': True})
+        return jsonify({'error': '같은 이름의 다른 PDF가 있습니다. 새 이름을 입력해 주세요.'}), 409
     file.save(save_path)
     return jsonify({"ok": True, "path": save_path})
 
@@ -525,7 +645,10 @@ def run_extract():
         path = os.path.join(UPLOAD_FOLDER, f"{name}.pdf")
     else:
         path = request.args.get('path', '')
-    return Response(extract_pdf_task(path, name, col), mimetype='text/event-stream')
+    from pathlib import Path
+    if not Path(path).resolve().is_relative_to(Path(UPLOAD_FOLDER).resolve()):
+        return jsonify({'error': 'PDF must be uploaded first'}), 400
+    return Response(extract_pdf_task(path, name, col), mimetype='text/event-stream', headers={'Cache-Control':'no-cache', 'X-Accel-Buffering':'no'})
 
 @app.route('/api/run/trim', methods=['GET'])
 @admin_required
@@ -575,9 +698,9 @@ def run_crop_single():
     
     from book_assets import generate_book_assets
     try:
-        generate_book_assets(folder)
+        generate_book_assets(folder, image_dir=store.root/'img'/folder, output_dir=store.root/'textbooks', index_path=store.root/'templates'/'main.html', allow_empty=True)
     except Exception:
-        pass
+        raise
 
     return jsonify({'ok': True, 'changed': changed, 'message': f'{filename} 여백 자르기 완료!'})
 
@@ -611,6 +734,8 @@ def run_bulk_split():
         return jsonify({'ok': False, 'error': '분할할 파일이 선택되지 않았습니다.'}), 400
 
     results = []
+    import re
+    filenames = sorted(filenames, key=lambda f: int(re.search(r'\d+', f).group()), reverse=True)
     for filename in filenames:
         try:
             list(split_image_task(folder, str(filename)))
@@ -695,7 +820,7 @@ def run_delete_sync():
 @login_required
 def get_my_book_request():
     username = session['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT id, book_name, status, created_at FROM book_requests WHERE username=? AND status='pending' ORDER BY created_at DESC LIMIT 1", (username,))
         row = c.fetchone()
@@ -712,7 +837,7 @@ def create_book_request():
     if not book_name:
         return jsonify({"error": "교재 이름이 필요합니다."}), 400
     
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         # 이미 대기중인 요청이 있는지 확인
         c.execute("SELECT id FROM book_requests WHERE username=? AND status='pending'", (username,))
@@ -727,7 +852,7 @@ def create_book_request():
 @login_required
 def delete_book_request(req_id):
     username = session['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("DELETE FROM book_requests WHERE id=? AND username=?", (req_id, username))
         conn.commit()
@@ -736,7 +861,7 @@ def delete_book_request(req_id):
 @app.route('/api/admin/book_requests', methods=['GET'])
 @admin_required
 def admin_get_book_requests():
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT id, username, book_name, status, created_at FROM book_requests ORDER BY created_at DESC")
         rows = c.fetchall()
@@ -752,7 +877,7 @@ def admin_get_book_requests():
 @app.route('/api/admin/book_requests/<int:req_id>/complete', methods=['POST'])
 @admin_required
 def admin_complete_book_request(req_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("UPDATE book_requests SET status='completed' WHERE id=?", (req_id,))
         conn.commit()
@@ -761,7 +886,7 @@ def admin_complete_book_request(req_id):
 @app.route('/api/admin/book_requests/<int:req_id>', methods=['DELETE'])
 @admin_required
 def admin_delete_book_request(req_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("DELETE FROM book_requests WHERE id=?", (req_id,))
         conn.commit()
@@ -789,170 +914,11 @@ ZIP_TASK_STATUS = {
     'done_files': 0,
 }
 
-def execute_backup_background(cwd):
-    global BACKUP_TASK_STATUS
-    import subprocess, time, shutil
-
-    BACKUP_TASK_STATUS['running'] = True
-    BACKUP_TASK_STATUS['target'] = 'github'
-    BACKUP_TASK_STATUS['progress_msg'] = 'GitHub 백업 준비 중...'
-    BACKUP_TASK_STATUS['percent'] = 10
-    BACKUP_TASK_STATUS['result'] = None
-    BACKUP_TASK_STATUS['start_time'] = time.time()
-
-    print("[Backup Task] Started GitHub backup", flush=True)
-
-    lock_file = os.path.join(cwd, '.git_sync.lock')
-    github_ok = False
-    github_msg = ""
-    github_error = None
-    commit_msg = None
-    changed = False
-
-    try:
-        with open(lock_file, 'w') as f:
-            f.write(str(time.time()))
-
-        BACKUP_TASK_STATUS['progress_msg'] = 'GitHub 저장소 연결 및 인증 확인 중...'
-        BACKUP_TASK_STATUS['percent'] = 25
-        print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-
-        token = os.environ.get('GITHUB_TOKEN')
-        if not token:
-            github_ok = False
-            github_error = "GITHUB_TOKEN 환경변수가 설정되지 않았습니다."
-        else:
-            repo_url = f'https://oauth2:{token}@github.com/Zenon-Ultra/dhekqapdlzj1.git'
-            git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "echo"}
-
-            remotes = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=10).stdout.splitlines()
-            if 'origin' in remotes:
-                subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
-            else:
-                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=cwd, check=False, env=git_env, timeout=10)
-
-            subprocess.run(['git', 'config', 'user.email', 'bot@render.com'], cwd=cwd, check=False, env=git_env, timeout=10)
-            subprocess.run(['git', 'config', 'user.name', 'Render Auto Sync'], cwd=cwd, check=False, env=git_env, timeout=10)
-
-            has_rebase = any(os.path.exists(os.path.join(cwd, reb_dir)) for reb_dir in ['.git/rebase-merge', '.git/rebase-apply'])
-            if has_rebase:
-                subprocess.run(['git', 'rebase', '--abort'], cwd=cwd, check=False, env=git_env, timeout=10)
-                for reb_dir in ['.git/rebase-merge', '.git/rebase-apply']:
-                    reb_path = os.path.join(cwd, reb_dir)
-                    if os.path.exists(reb_path):
-                        shutil.rmtree(reb_path, ignore_errors=True)
-
-            BACKUP_TASK_STATUS['progress_msg'] = '변경된 모든 에셋 및 데이터 파일 감지 중 (git add .)...'
-            BACKUP_TASK_STATUS['percent'] = 50
-            print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-
-            # 이전 git 프로세스 크래시/타임아웃으로 남은 lock 파일 제거
-            index_lock = os.path.join(cwd, '.git', 'index.lock')
-            if os.path.exists(index_lock):
-                try:
-                    os.remove(index_lock)
-                    print("[Backup Task] Removed stale .git/index.lock", flush=True)
-                except Exception as lock_err:
-                    print(f"[Backup Task] Warning: could not remove index.lock: {lock_err}", flush=True)
-
-            subprocess.run(['git', 'add', '-u'], cwd=cwd, check=False, env=git_env, timeout=120)
-
-            # 새 파일(untracked)은 목록을 먼저 가져와 100개씩 나눠 add → 메모리 급증 방지
-            ls_new = subprocess.run(
-                ['git', 'ls-files', '--others', '--exclude-standard'],
-                capture_output=True, text=True, cwd=cwd, env=git_env, timeout=60
-            )
-            new_files = [f for f in ls_new.stdout.splitlines() if f.strip()]
-            if new_files:
-                batch_size = 100
-                for batch_start in range(0, len(new_files), batch_size):
-                    batch = new_files[batch_start:batch_start + batch_size]
-                    subprocess.run(
-                        ['git', 'add', '--'] + batch,
-                        cwd=cwd, check=False, env=git_env, timeout=60
-                    )
-                    print(f"[Backup Task] git add batch {batch_start // batch_size + 1}: {len(batch)} files", flush=True)
-
-            status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=cwd, env=git_env, timeout=30)
-            changed_files = status.stdout.strip()
-
-            if not changed_files:
-                github_ok = True
-                github_msg = "변경된 파일이 없습니다. GitHub 저장소가 이미 최신 상태입니다."
-                changed = False
-                BACKUP_TASK_STATUS['percent'] = 100
-            else:
-                file_count = len(changed_files.splitlines())
-                commit_msg = f'Manual backup by admin at {time.strftime("%Y-%m-%d %H:%M:%S")} ({file_count} files changed)'
-                BACKUP_TASK_STATUS['progress_msg'] = f'GitHub 커밋 및 원격 푸시 중 ({file_count}개 파일)...'
-                BACKUP_TASK_STATUS['percent'] = 80
-                print(f"[Backup Task] {BACKUP_TASK_STATUS['progress_msg']}", flush=True)
-
-                subprocess.run(['git', 'commit', '-m', commit_msg], cwd=cwd, check=True, env=git_env, timeout=60)
-
-                result = subprocess.run(['git', 'push', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=120)
-                if result.returncode != 0:
-                    subprocess.run(['git', 'fetch', 'origin'], cwd=cwd, check=False, env=git_env, timeout=30)
-                    result = subprocess.run(['git', 'push', '--force-with-lease', 'origin', 'HEAD:main'], cwd=cwd, capture_output=True, text=True, env=git_env, timeout=120)
-
-                if result.returncode != 0:
-                    err_detail = (result.stderr or result.stdout or 'Git push 실패').strip()
-                    raise Exception(f"Git push 실패: {err_detail}")
-
-                github_ok = True
-                github_msg = f"GitHub 전체 백업 완료! ({file_count}개 변경 파일 커밋/푸시됨)"
-                changed = True
-                BACKUP_TASK_STATUS['percent'] = 100
-
-        BACKUP_TASK_STATUS['progress_msg'] = '백업 완료!'
-        BACKUP_TASK_STATUS['result'] = {
-            'ok': github_ok,
-            'github_ok': github_ok,
-            'github_msg': github_msg or github_error or 'GitHub 백업 완료',
-            'github_error': github_error,
-            'changed': changed,
-            'commit': commit_msg
-        }
-
-    except Exception as e:
-        BACKUP_TASK_STATUS['percent'] = 100
-        BACKUP_TASK_STATUS['result'] = {
-            'ok': False,
-            'error': f'GitHub 백업 중 예외 발생: {e}'
-        }
-        print(f"[Backup Task] Severe error: {e}", flush=True)
-    finally:
-        BACKUP_TASK_STATUS['running'] = False
-        if os.path.exists(lock_file):
-            try:
-                os.remove(lock_file)
-            except Exception:
-                pass
-
 @app.route('/api/admin/github_backup', methods=['POST'])
 @admin_required
 def github_backup():
-    import threading
-    global BACKUP_TASK_STATUS
+    return jsonify({'ok': False, 'error': 'GitHub data backup is disabled. Use ZIP export or B2 snapshots.'}), 409
 
-    if BACKUP_TASK_STATUS['running']:
-        return jsonify({
-            'ok': False,
-            'error': '이미 백업 작업이 진행 중입니다.',
-            'running': True,
-            'progress_msg': BACKUP_TASK_STATUS['progress_msg']
-        }), 409
-
-    cwd = os.path.dirname(os.path.abspath(__file__))
-
-    t = threading.Thread(target=execute_backup_background, args=(cwd,), daemon=True)
-    t.start()
-
-    return jsonify({
-        'ok': True,
-        'status': 'started',
-        'message': 'GitHub 백업이 시작되었습니다.'
-    })
 
 def _run_zip_background(cwd):
     """백그라운드 스레드에서 ZIP 파일을 생성하고 진행 상태를 파일에 기록합니다."""
@@ -1029,7 +995,8 @@ def prepare_backup_zip():
         except Exception:
             pass
 
-    cwd = os.path.dirname(os.path.abspath(__file__))
+    cwd = str(store.root)
+    ZIP_TASK_STATUS.update({'running': True, 'ready': False, 'error': None})
     t = threading.Thread(target=_run_zip_background, args=(cwd,), daemon=True)
     t.start()
     return jsonify({'ok': True, 'message': 'ZIP 생성이 시작되었습니다. 상태를 폴링하세요.'})
@@ -1107,7 +1074,9 @@ def github_auto_sync_toggle():
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         enabled = bool(data.get('enabled', False))
-        set_auto_sync_enabled(enabled)
+        if enabled:
+            return jsonify({'ok': False, 'error': 'GitHub auto-sync is disabled; use cloud backup.'}), 409
+        set_auto_sync_enabled(False)
         return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
     return jsonify({'ok': True, 'enabled': is_auto_sync_enabled()})
 
@@ -1124,4 +1093,4 @@ def maintenance_mode_toggle():
 
 if __name__ == '__main__':
     print("Server has started! Open browser and go to http://127.0.0.1:5000")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=False)
